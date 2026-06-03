@@ -1,6 +1,10 @@
 # CHANGELOG
 
-## 1.1.1 (2026-10-14)
+## 1.1.2 (2026-06-03)
+
+- Added support for Windsurf's rebrand to Devin when auto-detecting mode
+
+## 1.1.1 (2026-05-17)
 
 - Added missing Next.js inferred externally imported entries (`/proxy` and `/global-not-found`)
 

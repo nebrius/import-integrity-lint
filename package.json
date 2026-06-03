@@ -1,6 +1,6 @@
 {
   "name": "import-integrity-lint",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "High-performance ESLint/Oxlint plugin that catches dead code, broken imports, and architectural violations. Optimized for monorepos.",
   "keywords": [
     "eslint",
