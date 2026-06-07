@@ -319,11 +319,11 @@ jest.spyOn(console, 'error').mockImplementation((msg: unknown) => {
   // keep the first, which is what tests assert on.
   if (!lastConsoleError) lastConsoleError = String(msg);
 });
-jest.spyOn(process, 'exit').mockImplementation((() => {
+jest.spyOn(process, 'exit').mockImplementation(() => {
   const message = lastConsoleError;
   lastConsoleError = '';
   throw new Error(message);
-}) as never);
+});
 
 beforeEach(() => {
   lastConsoleError = '';
