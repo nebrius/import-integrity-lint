@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 1.1.3 (2026-06-22)
+
+- Fixed a broken link in error reporting
+
 ## 1.1.2 (2026-06-03)
 
 - Added support for Windsurf's rebrand to Devin when auto-detecting mode
