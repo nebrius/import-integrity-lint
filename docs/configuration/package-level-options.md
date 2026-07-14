@@ -70,6 +70,7 @@ Entry points are inferred automatically if your `package.json` declares `exports
 
 - Your `tsconfig.json` declares both `outDir` and `rootDir`, in which case Import Integrity maps the compiled output paths (what `package.json` points to) back to the source paths (what Import Integrity needs).
 - The file `package.json` points to has a `.ts`, `.mts`, or `.cts` extension, in which case the path is used directly.
+- The file `package.json` points to exists on disk as-is — e.g. a pure-JavaScript package whose `exports` reference source files directly — in which case the path is used directly. Declaration files (`.d.ts`, `.d.mts`, `.d.cts`) are excluded, since those are compiled artifacts.
 
 Inferred entry points are merged with any `entryPointFiles` you provide. If both define an entry for the same subpath (e.g. `"."`), your value takes precedence; inferred entries for subpaths you didn't specify are kept.
 

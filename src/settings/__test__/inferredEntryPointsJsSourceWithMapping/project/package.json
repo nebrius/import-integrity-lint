@@ -1,0 +1,7 @@
+{
+  "name": "inferred-js-source-with-mapping-test",
+  "exports": {
+    ".": "./dist/index.js",
+    "./cli": "./bin/cli.js"
+  }
+}

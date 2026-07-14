@@ -1,5 +1,9 @@
 # CHANGELOG
 
+# 1.1.4 (2026-07-14)
+
+- Fixed a bug where packages without a compile step (e.g. pure JavaScript packages) were not properly being mapped for cross-package import analysis
+
 ## 1.1.3 (2026-06-22)
 
 - Fixed a broken link in error reporting

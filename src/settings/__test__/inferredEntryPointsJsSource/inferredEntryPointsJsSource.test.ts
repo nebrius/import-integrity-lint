@@ -3,9 +3,9 @@ import { join } from 'node:path';
 import { getAllPackageSettings } from '../../settings.js';
 
 const TEST_PACKAGE_DIR = join(import.meta.dirname, 'project');
-const FILE_INDEX = join(TEST_PACKAGE_DIR, 'src', 'index.ts');
+const FILE_INDEX = join(TEST_PACKAGE_DIR, 'src', 'index.js');
 
-it('Skips inferring compiled exports that do not exist on disk when there is no tsconfig mapping', () => {
+it('Infers entry points from exports that point directly at an existing file, without a tsconfig mapping', () => {
   const { packageSettings } = getAllPackageSettings({
     filename: FILE_INDEX,
     settings: {
@@ -20,8 +20,8 @@ it('Skips inferring compiled exports that do not exist on disk when there is no 
     throw new Error('packageSettings should be defined');
   }
 
-  // The export points at a compiled artifact (./dist/index.js) that isn't on
-  // disk, and without a tsconfig mapping it can't be traced back to source —
-  // so nothing is inferred, even though exports are present
-  expect(packageSettings.entryPoints).toEqual([]);
+  // Pure-JS package: no tsconfig, exports reference the source file as-is
+  expect(packageSettings.entryPoints).toEqual([
+    { type: 'static', subPath: '.', filePath: './src/index.js' },
+  ]);
 });

@@ -243,29 +243,26 @@ function populatePackageSettingsCache(userPackageSettings: PackageSettings) {
   const inferredEntryPoints: Record<string, string> = {};
   if (packageJsonExports) {
     for (const [key, value] of Object.entries(packageJsonExports)) {
+      // Declaration files are compiled artifacts, never source, so they're
+      // excluded from both direct-use branches below (the mapping branch
+      // rewrites them back to source instead)
+      const isDeclarationFile =
+        value.endsWith('.d.ts') ||
+        value.endsWith('.d.mts') ||
+        value.endsWith('.d.cts');
+
       // If this is a TypeScript file, we know it's not mapped and can use its
-      // entry directly. We have to be careful not to match `.d.ts` files though
-      // since those are compiled artifacts
+      // entry directly
       if (
         (value.endsWith('.ts') ||
           value.endsWith('.mts') ||
           value.endsWith('.cts')) &&
-        !(
-          value.endsWith('.d.ts') ||
-          value.endsWith('.d.mts') ||
-          value.endsWith('.d.cts')
-        )
+        !isDeclarationFile
       ) {
         inferredEntryPoints[key] = value;
       }
-      // Otherwise we require a mapping from tsconfig
-      else if (mapping) {
-        if (!value.startsWith(mapping.outDir)) {
-          warn(
-            `Export ${key} in ${packageRootDir} in package.json export doesn't start with TypeScript's outDir ${mapping.outDir}`
-          );
-          continue;
-        }
+      // Exports under TypeScript's outDir get mapped back to source
+      else if (mapping && value.startsWith(mapping.outDir)) {
         const baseFile = value.replace(mapping.outDir, mapping.rootDir);
         // Strip an extension. Treats `.d.ts`, `.d.mts`, `.d.cts` as single
         // units so the types-only-package case (`exports: { '.': { types:
@@ -295,6 +292,19 @@ function populatePackageSettingsCache(userPackageSettings: PackageSettings) {
         if (srcFile) {
           inferredEntryPoints[key] = srcFile;
         }
+      }
+      // If the export points at a file that exists in the package as-is (e.g. a
+      // pure-JavaScript package whose exports reference source files directly)
+      // we can use its entry directly
+      else if (!isDeclarationFile && existsSync(join(packageRootDir, value))) {
+        inferredEntryPoints[key] = value;
+      }
+      // Otherwise, with a tsconfig mapping in play, the export points at
+      // nothing we can trace back to source
+      else if (mapping) {
+        warn(
+          `Export ${key} in ${packageRootDir} in package.json export doesn't start with TypeScript's outDir ${mapping.outDir}`
+        );
       }
     }
   }

@@ -1,0 +1,6 @@
+{
+  "name": "inferred-js-source-test",
+  "exports": {
+    ".": "./src/index.js"
+  }
+}
