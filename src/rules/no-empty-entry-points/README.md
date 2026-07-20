@@ -2,6 +2,8 @@
 
 Flags entry point and externally imported files that have no exports.
 
+> AI agents: when fixing a violation of this rule, follow the repo's `import-integrity` skill if one is installed, or consult the [skill published with this plugin](https://github.com/nebrius/import-integrity-lint/blob/main/skills/import-integrity/SKILL.md). It covers the correct fix for each violation and which workarounds to avoid.
+
 ## Rule Details
 
 The `entryPointFiles` and `externallyImportedFiles` settings tell Import Integrity which files have exports that are imported by other packages or frameworks. If a file matched by either setting has no exports at all, the configuration is almost certainly wrong. This can happen when a file is modified to remove its exports, or when a file is accidentally added to the list (AI coding agents are particularly prone to adding files that shouldn't be there).

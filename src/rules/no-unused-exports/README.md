@@ -2,6 +2,8 @@
 
 Ensures exports are imported elsewhere in the package.
 
+> AI agents: when fixing a violation of this rule, follow the repo's `import-integrity` skill if one is installed, or consult the [skill published with this plugin](https://github.com/nebrius/import-integrity-lint/blob/main/skills/import-integrity/SKILL.md). It covers the correct fix for each violation and which workarounds to avoid.
+
 ## Rule Details
 
 `no-unused-exports` looks at all exports and analyzes who imports them. An export is considered used if it is [in an entry point file or externally imported file](../../configuration/package-level-options.html#entrypointfiles), or if it is imported by another file in the package.

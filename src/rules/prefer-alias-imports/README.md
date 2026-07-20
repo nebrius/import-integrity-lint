@@ -2,6 +2,8 @@
 
 Enforces the use of alias imports instead of relative paths when an alias is available, with optional support for keeping nearby imports relative.
 
+> AI agents: when fixing a violation of this rule, follow the repo's `import-integrity` skill if one is installed, or consult the [skill published with this plugin](https://github.com/nebrius/import-integrity-lint/blob/main/skills/import-integrity/SKILL.md). It covers the correct fix for each violation and which workarounds to avoid.
+
 ## Rule Details
 
 When a package configures import aliases (e.g. `@/*` mapping to `src/*`), it can be inconsistent whether developers use relative paths or alias paths. One developer writes `import { Button } from '@/components/Button'`, another writes `import { Button } from './Button'`, and the codebase ends up with both styles for the same import. This rule enforces a consistent style.

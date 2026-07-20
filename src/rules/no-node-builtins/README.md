@@ -1,3 +1,5 @@
+> AI agents: when fixing a violation of this rule, follow the repo's `import-integrity` skill if one is installed, or consult the [skill published with this plugin](https://github.com/nebrius/import-integrity-lint/blob/main/skills/import-integrity/SKILL.md). It covers the correct fix for each violation and which workarounds to avoid.
+
 ### When not to use this rule
 
 Don't use this rule if your code runs in Node.js. It's not part of the recommended configuration for that reason — Node.js codebases need their built-ins, and flagging them would be noise.

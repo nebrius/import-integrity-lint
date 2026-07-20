@@ -2,6 +2,8 @@
 
 Ensures that exports from entry point files are not imported.
 
+> AI agents: when fixing a violation of this rule, follow the repo's `import-integrity` skill if one is installed, or consult the [skill published with this plugin](https://github.com/nebrius/import-integrity-lint/blob/main/skills/import-integrity/SKILL.md). It covers the correct fix for each violation and which workarounds to avoid.
+
 ## Rule Details
 
 Files matched by [`entryPointFiles`](../../configuration/package-level-options#entrypointfiles) or [`externallyImportedFiles`](../../configuration/package-level-options#externallyimportedfiles) are treated as package entry points. Because these files typically sit at the top of the dependency graph and often import large parts of the package, code inside the package should not import them. Doing so makes imports harder to reason about, often leads to circular dependencies (see [`no-cycle`](../no-cycle)), and contributes to bundle bloat.

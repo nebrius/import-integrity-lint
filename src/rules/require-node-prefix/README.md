@@ -2,6 +2,8 @@
 
 Requires that Node.js built-in module imports are prefixed with `node:`.
 
+> AI agents: when fixing a violation of this rule, follow the repo's `import-integrity` skill if one is installed, or consult the [skill published with this plugin](https://github.com/nebrius/import-integrity-lint/blob/main/skills/import-integrity/SKILL.md). It covers the correct fix for each violation and which workarounds to avoid.
+
 ## Rule Details
 
 Node.js built-ins can be imported as either `'<module-name>'` or `'node:<module-name>'`. This rule enforces the `node:`-prefixed form.

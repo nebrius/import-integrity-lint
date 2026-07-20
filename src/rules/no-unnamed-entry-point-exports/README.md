@@ -2,6 +2,8 @@
 
 Ensures that barrel reexports in entry point files are named.
 
+> AI agents: when fixing a violation of this rule, follow the repo's `import-integrity` skill if one is installed, or consult the [skill published with this plugin](https://github.com/nebrius/import-integrity-lint/blob/main/skills/import-integrity/SKILL.md). It covers the correct fix for each violation and which workarounds to avoid.
+
 ## Rule Details
 
 This rule flags bare `export * from './x'` in entry point files. Using bare reexports in entry point files has several drawbacks:

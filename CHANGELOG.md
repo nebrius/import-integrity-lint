@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 1.2.0 (2026-07-19)
+
+- Added an [agent skill](skills/import-integrity/SKILL.md) that AI can use to fix violations
+
 ## 1.1.4 (2026-07-14)
 
 - Fixed a bug where packages without a compile step (e.g. pure JavaScript packages) were not properly being mapped for cross-package import analysis

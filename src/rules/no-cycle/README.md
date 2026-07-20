@@ -2,6 +2,8 @@
 
 Ensures that there are no cycles in imports/reexports.
 
+> AI agents: when fixing a violation of this rule, follow the repo's `import-integrity` skill if one is installed, or consult the [skill published with this plugin](https://github.com/nebrius/import-integrity-lint/blob/main/skills/import-integrity/SKILL.md). It covers the correct fix for each violation and which workarounds to avoid.
+
 ## Rule Details
 
 A cycle can occur when file A imports file B, which imports file C, which imports file A. Sometimes this pattern works just fine, but sometimes it can cause severe yet inscrutable bugs. For example, this type of cycle can lead to imports being `undefined` unexpectedly, even if that export is defined as `export const foo = a * 10;` and appears as if it would be impossible to be `undefined`. I've had exactly this bug take down an entire server before.

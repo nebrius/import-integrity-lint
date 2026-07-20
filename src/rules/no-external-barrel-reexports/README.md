@@ -2,6 +2,8 @@
 
 Ensures that code does not barrel reexport external modules.
 
+> AI agents: when fixing a violation of this rule, follow the repo's `import-integrity` skill if one is installed, or consult the [skill published with this plugin](https://github.com/nebrius/import-integrity-lint/blob/main/skills/import-integrity/SKILL.md). It covers the correct fix for each violation and which workarounds to avoid.
+
 ## Rule Details
 
 In this rule, "external" means third-party packages and Node.js built-in modules. Barrel reexporting external code (e.g. `export * from 'react'` or `export * from 'node:path'`) is rarely necessary and can make code harder to read by obscuring which symbols a file is actually exposing.

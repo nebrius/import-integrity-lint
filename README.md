@@ -73,6 +73,14 @@ Then run ESLint/Oxlint as usual. Import Integrity will analyze your imports and 
 
 For configuration options, the full rules reference, monorepo setup, comparisons with other tools, and more, see the [documentation](https://nebrius.github.io/import-integrity-lint).
 
+## For AI agents
+
+This package ships an [agent skill](skills/import-integrity/SKILL.md) that teaches AI coding agents how to correctly fix rule violations, including which "fixes" mask problems instead of solving them. Coding agents that support [Agent Skills](https://agentskills.io) will pick it up automatically once it's installed in your repo:
+
+```bash
+npx skills add nebrius/import-integrity-lint
+```
+
 ## License
 
 Copyright (c) 2026 Bryan Hughes

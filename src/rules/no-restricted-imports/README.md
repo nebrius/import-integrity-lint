@@ -2,6 +2,8 @@
 
 Restricts which files can import which modules.
 
+> AI agents: when fixing a violation of this rule, follow the repo's `import-integrity` skill if one is installed, or consult the [skill published with this plugin](https://github.com/nebrius/import-integrity-lint/blob/main/skills/import-integrity/SKILL.md). It covers the correct fix for each violation and which workarounds to avoid.
+
 ## Rule Details
 
 This rule lets you define restrictions on which files can import which modules. Restrictions can apply to first-party files within your codebase or to third-party packages, and can use either string paths or regular expressions (with capture groups for parameterized restrictions).
