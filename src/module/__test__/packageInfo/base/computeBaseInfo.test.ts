@@ -447,6 +447,7 @@ it('Computes base info', () => {
     fixedAliases: {},
     ignorePatterns: [],
     ignoreOverridePatterns: [],
+    defaultIgnoreOverrides: [],
     getEntryPointSpecifier: () => undefined,
     isExternallyImportedCheck: () => false,
   });
@@ -472,6 +473,7 @@ it('Adds, modifies, and deletes a new file', () => {
     fixedAliases: {},
     ignorePatterns: [],
     ignoreOverridePatterns: [],
+    defaultIgnoreOverrides: [],
     getEntryPointSpecifier: () => undefined,
     isExternallyImportedCheck: () => false,
   });

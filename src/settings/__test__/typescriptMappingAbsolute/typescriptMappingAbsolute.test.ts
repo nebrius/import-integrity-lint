@@ -22,7 +22,7 @@ it('Normalizes absolute rootDir/outDir into relative paths with a "./" prefix', 
       })
     );
 
-    const result = getTypeScriptSettings(tempDir);
+    const result = getTypeScriptSettings(tempDir, []);
 
     expect(result.mapping).toEqual({
       rootDir: './src',

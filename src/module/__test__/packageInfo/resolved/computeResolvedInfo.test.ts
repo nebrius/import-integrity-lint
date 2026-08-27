@@ -364,6 +364,7 @@ function makeBaseInfo() {
     fixedAliases: { '@alias': join(TEST_PACKAGE_DIR, 'one/b.ts') },
     ignorePatterns: [],
     ignoreOverridePatterns: [],
+    defaultIgnoreOverrides: [],
     getEntryPointSpecifier: () => undefined,
     isExternallyImportedCheck: () => false,
   });

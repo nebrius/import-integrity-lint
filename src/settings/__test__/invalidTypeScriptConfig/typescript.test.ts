@@ -34,6 +34,7 @@ it('Recovers from an invalid tsconfig file', () => {
     externallyImported: [],
     ignorePatterns: [],
     ignoreOverridePatterns: [],
+    defaultIgnoreOverrides: [],
     testFilePatterns: [],
     wildcardAliases: {},
     fixedAliases: {},

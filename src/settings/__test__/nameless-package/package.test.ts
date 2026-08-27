@@ -34,6 +34,7 @@ it('Fetchings settings from package.json', () => {
     externallyImported: [],
     ignorePatterns: [],
     ignoreOverridePatterns: [],
+    defaultIgnoreOverrides: [],
     testFilePatterns: [],
     wildcardAliases: {},
     fixedAliases: {},

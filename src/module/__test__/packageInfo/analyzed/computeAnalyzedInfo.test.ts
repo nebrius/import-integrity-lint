@@ -541,6 +541,7 @@ it('Computes analyzed info', () => {
         fixedAliases: {},
         ignorePatterns: [],
         ignoreOverridePatterns: [],
+        defaultIgnoreOverrides: [],
         getEntryPointSpecifier: (filePath) =>
           filePath === FILE_A ? 'test' : undefined,
         isExternallyImportedCheck: () => false,
@@ -583,6 +584,7 @@ it('Computes analyzed info for a package with a file that imports itself', () =>
           fixedAliases: {},
           ignorePatterns: [],
           ignoreOverridePatterns: [],
+          defaultIgnoreOverrides: [],
           getEntryPointSpecifier: () => undefined,
           isExternallyImportedCheck: () => false,
         })
@@ -608,6 +610,7 @@ it('Computes analyzed info for a package with a reexport cycle triggered by an e
           fixedAliases: {},
           ignorePatterns: [],
           ignoreOverridePatterns: [],
+          defaultIgnoreOverrides: [],
           getEntryPointSpecifier: (filePath) =>
             filePath === fileA ? 'test' : undefined,
           isExternallyImportedCheck: () => false,
@@ -633,6 +636,7 @@ it('Computes analyzed info for a package with a reexport cycle triggered by an i
           fixedAliases: {},
           ignorePatterns: [],
           ignoreOverridePatterns: [],
+          defaultIgnoreOverrides: [],
           getEntryPointSpecifier: () => undefined,
           isExternallyImportedCheck: () => false,
         })
@@ -657,6 +661,7 @@ it('Computes analyzed info for a package with a single reexport of a firstPartyO
           fixedAliases: {},
           ignorePatterns: [],
           ignoreOverridePatterns: [],
+          defaultIgnoreOverrides: [],
           getEntryPointSpecifier: () => undefined,
           isExternallyImportedCheck: () => false,
         })
@@ -681,6 +686,7 @@ it('Computes analyzed info for a package with a named barrel reexport of a built
           fixedAliases: {},
           ignorePatterns: [],
           ignoreOverridePatterns: [],
+          defaultIgnoreOverrides: [],
           getEntryPointSpecifier: () => undefined,
           isExternallyImportedCheck: () => false,
         })
@@ -705,6 +711,7 @@ it('Computes analyzed info for a package with a named barrel reexport of a first
           fixedAliases: {},
           ignorePatterns: [],
           ignoreOverridePatterns: [],
+          defaultIgnoreOverrides: [],
           getEntryPointSpecifier: () => undefined,
           isExternallyImportedCheck: () => false,
         })
@@ -725,6 +732,7 @@ it('Computes analyzed info for a package with a dynamic import', () => {
           fixedAliases: {},
           ignorePatterns: [],
           ignoreOverridePatterns: [],
+          defaultIgnoreOverrides: [],
           getEntryPointSpecifier: () => undefined,
           isExternallyImportedCheck: () => false,
         })
@@ -749,6 +757,7 @@ it('Computes analyzed info for a package with a side-effect import', () => {
           fixedAliases: {},
           ignorePatterns: [],
           ignoreOverridePatterns: [],
+          defaultIgnoreOverrides: [],
           getEntryPointSpecifier: () => undefined,
           isExternallyImportedCheck: () => false,
         })
@@ -774,6 +783,7 @@ it('Computes analyzed info for a package with a barrel reexport that is an entry
           fixedAliases: {},
           ignorePatterns: [],
           ignoreOverridePatterns: [],
+          defaultIgnoreOverrides: [],
           getEntryPointSpecifier: (filePath) =>
             filePath === fileA ? 'test' : undefined,
           isExternallyImportedCheck: () => false,

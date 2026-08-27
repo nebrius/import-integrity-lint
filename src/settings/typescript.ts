@@ -24,7 +24,8 @@ type ExtendedTypeScriptSettings = Pick<PackageSettings, 'alias'> & {
 };
 
 export function getTypeScriptSettings(
-  packageRootDir: string
+  packageRootDir: string,
+  defaultIgnoreOverrides: string[]
 ): ExtendedTypeScriptSettings {
   // Read in the file. Note: we don't support the full breadth of tsconfigs,
   // notably we don't support multiple nested configs and only look at the
@@ -43,7 +44,10 @@ export function getTypeScriptSettings(
     };
   }
 
-  const { alias, rootDir, outDir } = parseTsConfig(configPath);
+  const { alias, rootDir, outDir } = parseTsConfig(
+    configPath,
+    defaultIgnoreOverrides
+  );
 
   if (rootDir && outDir) {
     return {
@@ -140,6 +144,7 @@ function resolveTsConfigPathEntry(
 
 function parseTsConfig(
   configPath: string,
+  defaultIgnoreOverrides: string[],
   projectRootDir?: string
 ): TypeScriptSettings {
   const config = ts.readConfigFile(configPath, (file) =>
@@ -194,6 +199,7 @@ function parseTsConfig(
     if (configExtends.startsWith('.')) {
       baseConfig = parseTsConfig(
         resolve(dirname(configPath), configExtends),
+        defaultIgnoreOverrides,
         absoluteRootDir
       );
     } else {
@@ -201,7 +207,11 @@ function parseTsConfig(
       const require = createRequire(configPath);
       try {
         const resolvedPath = require.resolve(configExtends);
-        baseConfig = parseTsConfig(resolvedPath, absoluteRootDir);
+        baseConfig = parseTsConfig(
+          resolvedPath,
+          defaultIgnoreOverrides,
+          absoluteRootDir
+        );
       } catch {
         warn(
           `Could not resolve tsconfig extends path "${configExtends}" in ${configPath}`
@@ -248,7 +258,7 @@ function parseTsConfig(
     }
     if (
       !resolvedPathEntry.startsWith(absoluteRootDir ?? dirname(configPath)) ||
-      isDefaultIgnoredPath(resolvedPathEntry)
+      isDefaultIgnoredPath(resolvedPathEntry, defaultIgnoreOverrides)
     ) {
       continue;
     }

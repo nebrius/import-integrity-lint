@@ -24,6 +24,7 @@ const packageSettingsSchema = z.strictObject({
   externallyImportedFiles: z.array(z.string()).optional(),
   ignorePatterns: z.array(z.string()).optional(),
   ignoreOverridePatterns: z.array(z.string()).optional(),
+  defaultIgnoreOverrides: z.array(z.string()).optional(),
   testFilePatterns: z.array(z.string()).optional(),
 });
 

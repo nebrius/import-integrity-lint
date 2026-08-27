@@ -30,6 +30,7 @@ export type ParsedPackageSettings = Omit<
   PackageSettings,
   | 'ignorePatterns'
   | 'ignoreOverridePatterns'
+  | 'defaultIgnoreOverrides'
   | 'wildcardAliases'
   | 'fixedAliases'
   | 'entryPoints'
@@ -37,6 +38,7 @@ export type ParsedPackageSettings = Omit<
 > & {
   ignorePatterns: IgnorePattern[];
   ignoreOverridePatterns: IgnorePattern[];
+  defaultIgnoreOverrides: string[];
   wildcardAliases: Record<string, string>;
   fixedAliases: Record<string, string>;
   entryPoints: Array<
@@ -219,10 +221,14 @@ export function getAllPackageSettings(
 
 function populatePackageSettingsCache(userPackageSettings: PackageSettings) {
   const { packageRootDir } = userPackageSettings;
+  const defaultIgnoreOverrides =
+    userPackageSettings.defaultIgnoreOverrides ?? [];
 
   // Get TypeScript supplied settings
-  const { mapping, ...typeScriptSettings } =
-    getTypeScriptSettings(packageRootDir);
+  const { mapping, ...typeScriptSettings } = getTypeScriptSettings(
+    packageRootDir,
+    defaultIgnoreOverrides
+  );
 
   // Get package.json settings
   const { exports: packageJsonExports, ...packageJsonSettings } =
@@ -488,6 +494,7 @@ function populatePackageSettingsCache(userPackageSettings: PackageSettings) {
     externallyImported: parsedExternallyImported,
     ignorePatterns,
     ignoreOverridePatterns,
+    defaultIgnoreOverrides,
     testFilePatterns: mergedSettings.testFilePatterns ?? [],
   };
   packageSettingsCache.set(packageRootDir, {

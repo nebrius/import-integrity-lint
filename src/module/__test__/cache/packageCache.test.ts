@@ -28,6 +28,7 @@ const packageSettings: ParsedPackageSettings = {
   externallyImported: [],
   ignorePatterns: [],
   ignoreOverridePatterns: [],
+  defaultIgnoreOverrides: [],
   testFilePatterns: [],
 };
 

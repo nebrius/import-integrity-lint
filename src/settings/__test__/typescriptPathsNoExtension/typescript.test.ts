@@ -40,6 +40,7 @@ it('Resolves tsconfig paths entries that omit extensions or use index files', ()
     externallyImported: [],
     ignorePatterns: [],
     ignoreOverridePatterns: [],
+    defaultIgnoreOverrides: [],
     testFilePatterns: [],
     wildcardAliases: {
       '@subdir/': join(TEST_PACKAGE_DIR, 'src', 'sub' + sep),

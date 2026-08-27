@@ -18,7 +18,7 @@ Default: aliases in `tsconfig.json`
 
 Import Integrity defaults to the values inside of `tsconfig.json`, if present, with a few limitations:
 
-- Aliases that point to files outside of `packageRootDir`, or point to files inside of `node_modules`, `build`, `out`, `dist`, or any folder or file that starts with a `.` (with the exception of `.worktrees`), are ignored
+- Aliases that point to files outside of `packageRootDir`, or point to a file whose path contains a component that is `node_modules`, `build`, `out`, `dist`, or starts with a `.` (unless exempted via [`defaultIgnoreOverrides`](#defaultignoreoverrides)), are ignored
 - Aliases with more than one file, e.g. `"@/": ["a.ts", "b.ts"]`, are ignored
 
 Example:
@@ -161,6 +161,35 @@ Example:
       ignoreOverridePatterns: [
         'src/generated/**/*.ts',
       ],
+    },
+  },
+}
+```
+
+## `defaultIgnoreOverrides`
+
+Type: `string[]`
+
+Default: `[]`
+
+Import Integrity never analyzes a file if any component of its path (a folder name or the file's own name) is `node_modules`, `build`, `out`, `dist`, or starts with a `.`, regardless of ignore settings as a performance optimization (see the note under [`packageRootDir`](./repo-level-options#packagerootdir)). `defaultIgnoreOverrides` exempts specific names.
+
+Each entry is a single, explicit file or folder name. A path component anywhere in a file's path whose name matches an entry no longer causes the file to be ignored. Unlike [`ignoreOverridePatterns`](#ignoreoverridepatterns), entries are exact names rather than patterns to keep performance high.
+
+::: warning
+Entries are compared against individual path components exactly. An entry containing a path separator (e.g. `src/.worktrees`) or glob characters (e.g. `.wt*`) will never match anything but can incur a slight performance hit regardless.
+:::
+
+The most common use is git worktrees checked out in a hidden folder (e.g. `<repo>/.worktrees/feat-1`), which would otherwise cause every file in the checkout to be silently ignored.
+
+Example:
+
+```js
+{
+  settings: {
+    'import-integrity': {
+      packageRootDir: import.meta.dirname,
+      defaultIgnoreOverrides: ['.worktrees'],
     },
   },
 }

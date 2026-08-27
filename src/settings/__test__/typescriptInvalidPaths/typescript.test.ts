@@ -45,6 +45,7 @@ it('Skips tsconfig paths entries that do not resolve to anything on disk', () =>
     externallyImported: [],
     ignorePatterns: [],
     ignoreOverridePatterns: [],
+    defaultIgnoreOverrides: [],
     testFilePatterns: [],
     wildcardAliases: {},
     fixedAliases: {

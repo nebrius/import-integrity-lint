@@ -187,6 +187,7 @@ export function initializePackage({
   fixedAliases,
   ignorePatterns,
   ignoreOverridePatterns,
+  defaultIgnoreOverrides,
   entryPoints,
   externallyImported,
 }: ParsedPackageSettings): boolean {
@@ -207,6 +208,7 @@ export function initializePackage({
     fixedAliases,
     ignorePatterns,
     ignoreOverridePatterns,
+    defaultIgnoreOverrides,
     getEntryPointSpecifier: getGetEntryPointSpecifier({
       packageRootDir,
       packageName,

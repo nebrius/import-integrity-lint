@@ -34,6 +34,7 @@ it('Fetchings settings from typescript', () => {
     externallyImported: [],
     ignorePatterns: [],
     ignoreOverridePatterns: [],
+    defaultIgnoreOverrides: [],
     testFilePatterns: [],
     wildcardAliases: {
       '@/': join(TEST_PACKAGE_DIR, 'src/'),

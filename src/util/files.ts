@@ -16,27 +16,35 @@ type PotentialFile = {
   stats: Stats;
 };
 
-// Remember to update the docs when changing these lists (see
+// Remember to update the docs when changing this list (see
 // docs/configuration/repo-level-options.md and package-level-options.md)
 const DEFAULT_IGNORE_DIRECTORIES = ['node_modules', 'dist', 'build', 'out'];
-const DEFAULT_IGNORE_DOT_DIRECTORY_EXCEPTIONS = ['.worktrees'];
 
-// Check if a path should be ignored by default, including if any path segment
-// starts with a dot (e.g. .git, .next, etc.) and is not one of the exceptions
-// listed above
-export function isDefaultIgnoredPath(path: string) {
+// Check if a single path component (a folder name or file basename) is ignored
+// by default: any name that starts with a dot (e.g. .git, .next) or is in
+// DEFAULT_IGNORE_DIRECTORIES, unless it's explicitly overridden
+function isDefaultIgnoredSegment(
+  segment: string,
+  defaultIgnoreOverrides: string[]
+) {
   return (
-    DEFAULT_IGNORE_DIRECTORIES.some(
-      (dir) => path.includes(sep + dir + sep) || path.endsWith(sep + dir)
-    ) ||
-    path
-      .split(sep)
-      .some(
-        (segment) =>
-          segment.startsWith('.') &&
-          !DEFAULT_IGNORE_DOT_DIRECTORY_EXCEPTIONS.includes(segment)
-      )
+    !defaultIgnoreOverrides.includes(segment) &&
+    (segment.startsWith('.') || DEFAULT_IGNORE_DIRECTORIES.includes(segment))
   );
+}
+
+// Check if a path should be ignored by default because any of its segments is
+// a dot-prefixed name or one of DEFAULT_IGNORE_DIRECTORIES and is not exempted
+// via defaultIgnoreOverrides
+export function isDefaultIgnoredPath(
+  path: string,
+  defaultIgnoreOverrides: string[]
+) {
+  return path
+    .split(sep)
+    .some((segment) =>
+      isDefaultIgnoredSegment(segment, defaultIgnoreOverrides)
+    );
 }
 
 // Look for a single import-integrity.config.json(c) file directly inside dir.
@@ -87,10 +95,14 @@ export function getRawMonorepoPackageSettings(repoRootDir: string) {
 export function getFilesSync(
   packageRootDir: string,
   ignorePatterns: IgnorePattern[],
-  ignoreOverridePatterns: IgnorePattern[]
+  ignoreOverridePatterns: IgnorePattern[],
+  defaultIgnoreOverrides: string[]
 ) {
   // Read in the files and their stats, and filter out directories
-  const potentialFiles = getPotentialFilesList(packageRootDir)
+  const potentialFiles = getPotentialFilesList(
+    packageRootDir,
+    defaultIgnoreOverrides
+  )
     // Stats will be used for multiple checks later, so we want to cache it now.
     // Unfortunately we need more than what {withFileTypes: true} provides, so
     // we still need to call statSync separately
@@ -122,9 +134,14 @@ export function getFilesSync(
     parentPackageJsons,
     ignorePatterns,
     ignoreOverridePatterns,
+    // Nested .gitignore files are collected from the unfiltered list, since
+    // the default-ignore filter below always removes them (their basename
+    // starts with a dot)
+    potentialFiles
+      .filter(({ filePath }) => basename(filePath) === '.gitignore')
+      .map(({ filePath }) => filePath),
     potentialFiles.filter(
-      ({ filePath }) =>
-        !isDefaultIgnoredPath(filePath) && !basename(filePath).startsWith('.')
+      ({ filePath }) => !isDefaultIgnoredPath(filePath, defaultIgnoreOverrides)
     )
   );
 }
@@ -132,10 +149,14 @@ export function getFilesSync(
 export async function getFiles(
   packageRootDir: string,
   ignorePatterns: IgnorePattern[],
-  ignoreOverridePatterns: IgnorePattern[]
+  ignoreOverridePatterns: IgnorePattern[],
+  defaultIgnoreOverrides: string[]
 ) {
   // First, read in the files and convert the results to absolute path
-  const potentialFilePaths = getPotentialFilesList(packageRootDir);
+  const potentialFilePaths = getPotentialFilesList(
+    packageRootDir,
+    defaultIgnoreOverrides
+  );
 
   // Now add the stats to each file
   const potentialFiles = (
@@ -170,9 +191,14 @@ export async function getFiles(
     parentPackageJsons,
     ignorePatterns,
     ignoreOverridePatterns,
+    // Nested .gitignore files are collected from the unfiltered list, since
+    // the default-ignore filter below always removes them (their basename
+    // starts with a dot)
+    potentialFiles
+      .filter(({ filePath }) => basename(filePath) === '.gitignore')
+      .map(({ filePath }) => filePath),
     potentialFiles.filter(
-      ({ filePath }) =>
-        !isDefaultIgnoredPath(filePath) && !basename(filePath).startsWith('.')
+      ({ filePath }) => !isDefaultIgnoredPath(filePath, defaultIgnoreOverrides)
     )
   );
 }
@@ -311,11 +337,15 @@ export function getDependenciesFromPackageJson(packageJsonPath: string) {
   return dependencies;
 }
 
-// Get a potential list of files, automatically filtering out a few directories
-// known to contain lots of files we always want to ignore early on for perf
+// Get a potential list of files, skipping directories that are ignored by
+// default (see isDefaultIgnoredSegment) during traversal, since some of them
+// contain lots of files and we always want to ignore them early on for perf
 // reasons. Waiting to check against ignores incurs a big perf hit due to the
 // more complex and Regex based logic of ignores.
-function getPotentialFilesList(packageRootDir: string): string[] {
+function getPotentialFilesList(
+  packageRootDir: string,
+  defaultIgnoreOverrides: string[]
+): string[] {
   const potentialFilesList: string[] = [];
 
   const dirContents = readdirSync(packageRootDir, {
@@ -325,9 +355,12 @@ function getPotentialFilesList(packageRootDir: string): string[] {
   for (const content of dirContents) {
     if (!content.isDirectory()) {
       potentialFilesList.push(join(packageRootDir, content.name));
-    } else if (!DEFAULT_IGNORE_DIRECTORIES.includes(content.name)) {
+    } else if (!isDefaultIgnoredSegment(content.name, defaultIgnoreOverrides)) {
       potentialFilesList.push(
-        ...getPotentialFilesList(join(packageRootDir, content.name))
+        ...getPotentialFilesList(
+          join(packageRootDir, content.name),
+          defaultIgnoreOverrides
+        )
       );
     }
   }
@@ -340,6 +373,7 @@ function buildFileList(
   parentPackageJsons: string[],
   ignorePatterns: IgnorePattern[],
   ignoreOverridePatterns: IgnorePattern[],
+  nestedGitignoreFiles: string[],
   potentialFiles: PotentialFile[]
 ) {
   // Create the ignore instances for use in filtering
@@ -347,7 +381,7 @@ function buildFileList(
     packageRootDir,
     ignorePatterns,
     ignoreOverridePatterns,
-    potentialFiles
+    nestedGitignoreFiles
   );
 
   // Filter out ignored files
@@ -376,7 +410,7 @@ function initializeIgnores(
   packageRootDir: string,
   ignorePatterns: IgnorePattern[],
   ignoreOverridePatterns: IgnorePattern[],
-  potentialFiles: PotentialFile[]
+  nestedGitignoreFiles: string[]
 ) {
   if (ignoreData.has(packageRootDir)) {
     return;
@@ -394,25 +428,24 @@ function initializeIgnores(
     if (currentDirContents.includes('.gitignore')) {
       extraIgnoreFiles.push(join(currentDir, '.gitignore'));
     }
-    if (
-      // If we found the git folder, bail
-      currentDirContents.includes('.git') ||
-      // If we're at the root folder of the file system, bail. Note: we do the
-      // check this way to support both UNIX and Windows filesystems
-      currentDir === dirname(packageRootDir)
-    ) {
+    // If we found the git root folder, bail
+    if (currentDirContents.includes('.git')) {
       break;
     }
-    currentDir = dirname(packageRootDir);
+    const nextDir = dirname(currentDir);
+    // If we're at the root folder of the file system, bail. Note: we do the
+    // check this way to support both UNIX and Windows filesystems
+    if (nextDir === currentDir) {
+      break;
+    }
+    currentDir = nextDir;
   }
 
-  // Normalize and read in all ignore file contents
-  const ignoreFiles = [
-    ...extraIgnoreFiles,
-    ...potentialFiles
-      .filter(({ filePath }) => basename(filePath) === '.gitignore')
-      .map(({ filePath }) => filePath),
-  ].map((filePath) => ({
+  // Normalize and read in all ignore file contents. The walk-up and the
+  // traversal both find packageRootDir's own .gitignore, so deduplicate
+  const ignoreFiles = Array.from(
+    new Set([...extraIgnoreFiles, ...nestedGitignoreFiles])
+  ).map((filePath) => ({
     filePath,
     contents: readFileSync(filePath, 'utf-8'),
   }));

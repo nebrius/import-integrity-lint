@@ -114,7 +114,8 @@ async function initializeFileWatching(
     const { files, packageJsons } = await getFiles(
       packageInfo.packageRootDir,
       packageSettings.ignorePatterns,
-      packageSettings.ignoreOverridePatterns
+      packageSettings.ignoreOverridePatterns,
+      packageSettings.defaultIgnoreOverrides
     );
     return {
       files: new Map(

@@ -462,6 +462,7 @@ it('Ambiguous static + dynamic entry points throw during package initialization'
     externallyImported: [],
     ignorePatterns: [],
     ignoreOverridePatterns: [],
+    defaultIgnoreOverrides: [],
     testFilePatterns: [],
   };
 
@@ -496,6 +497,7 @@ it('Ambiguous dynamic + dynamic entry points throw during package initialization
     externallyImported: [],
     ignorePatterns: [],
     ignoreOverridePatterns: [],
+    defaultIgnoreOverrides: [],
     testFilePatterns: [],
   };
 

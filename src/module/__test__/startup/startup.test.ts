@@ -32,6 +32,7 @@ it('Updates cache when a new file is added', () => {
     externallyImported: [],
     ignorePatterns: [],
     ignoreOverridePatterns: [],
+    defaultIgnoreOverrides: [],
     testFilePatterns: [],
   };
   initializePackage(settings);

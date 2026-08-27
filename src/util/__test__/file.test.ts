@@ -33,6 +33,7 @@ it('Fetches files asynchronously, respecting ignorePatterns', async () => {
   const files = await getFiles(
     join(TEST_PACKAGE_DIR, 'src'),
     [{ dir: join(TEST_PACKAGE_DIR, 'src'), contents: 'src/c.ts' }],
+    [],
     []
   );
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -59,6 +60,7 @@ it('ignoreOverridePatterns overrides .gitignore patterns', async () => {
   const filesWithoutOverride = await getFiles(
     join(TEST_PACKAGE_DIR, 'src'),
     [{ dir: join(TEST_PACKAGE_DIR, 'src'), contents: 'src/c.ts' }],
+    [],
     []
   );
   expect(
@@ -74,7 +76,8 @@ it('ignoreOverridePatterns overrides .gitignore patterns', async () => {
   const filesWithOverride = await getFiles(
     join(TEST_PACKAGE_DIR, 'src'),
     [{ dir: join(TEST_PACKAGE_DIR, 'src'), contents: 'src/c.ts' }],
-    [{ dir: TEST_PACKAGE_DIR, contents: 'src/c.ts' }]
+    [{ dir: TEST_PACKAGE_DIR, contents: 'src/c.ts' }],
+    []
   );
   expect(
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -98,7 +101,8 @@ it('ignoreOverridePatterns works with glob patterns', async () => {
   const files = await getFiles(
     join(TEST_PACKAGE_DIR, 'src'),
     [{ dir: join(TEST_PACKAGE_DIR, 'src'), contents: 'src/c.ts' }],
-    [{ dir: TEST_PACKAGE_DIR, contents: 'src/*.ts' }]
+    [{ dir: TEST_PACKAGE_DIR, contents: 'src/*.ts' }],
+    []
   );
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   expect(files.files.map(({ latestUpdatedAt, ...rest }) => rest)).toEqual([
@@ -114,45 +118,121 @@ it('ignoreOverridePatterns works with glob patterns', async () => {
   ]);
 });
 
-it('Ignores default directories and dot directories, except .worktrees', () => {
+it('defaultIgnoreOverrides brings back files in overridden dot directories', async () => {
+  const files = await getFiles(
+    join(TEST_PACKAGE_DIR, 'src'),
+    [{ dir: join(TEST_PACKAGE_DIR, 'src'), contents: 'src/c.ts' }],
+    [],
+    ['.worktrees']
+  );
+  const filePaths = files.files.map(({ filePath }) => filePath);
+  expect(filePaths).toContain(join(TEST_PACKAGE_DIR, 'src/.worktrees/d.ts'));
+});
+
+it('defaultIgnoreOverrides brings back dot files overridden by exact name', async () => {
+  const files = await getFiles(
+    join(TEST_PACKAGE_DIR, 'src'),
+    [{ dir: join(TEST_PACKAGE_DIR, 'src'), contents: 'src/c.ts' }],
+    [],
+    ['.ignored.ts']
+  );
+  const filePaths = files.files.map(({ filePath }) => filePath);
+  expect(filePaths).toContain(join(TEST_PACKAGE_DIR, 'src/.ignored.ts'));
+});
+
+it('Applies .gitignore files nested inside the package tree', async () => {
+  const files = await getFiles(
+    join(TEST_PACKAGE_DIR, 'src'),
+    [{ dir: join(TEST_PACKAGE_DIR, 'src'), contents: 'src/c.ts' }],
+    [],
+    []
+  );
+  const filePaths = files.files.map(({ filePath }) => filePath);
+  // src/nested/.gitignore ignores its sibling sibling.ts
+  expect(filePaths).not.toContain(
+    join(TEST_PACKAGE_DIR, 'src/nested/sibling.ts')
+  );
+  expect(filePaths).toContain(join(TEST_PACKAGE_DIR, 'src/a.ts'));
+});
+
+it('Ignores default directories and dot directories', () => {
   // Ordinary paths are analyzed
   expect(
-    isDefaultIgnoredPath(join('/home/me/projects/my-repo/src/bar.js'))
+    isDefaultIgnoredPath(join('/home/me/projects/my-repo/src/bar.js'), [])
   ).toBe(false);
 
-  // Dot directories inside the package are ignored
+  // Dot directories are ignored, whether inside the package or as an ancestor
   expect(
-    isDefaultIgnoredPath(join('/home/me/my-repo/src/.generated/bar.js'))
+    isDefaultIgnoredPath(join('/home/me/my-repo/src/.generated/bar.js'), [])
+  ).toBe(true);
+  expect(
+    isDefaultIgnoredPath(join('/home/me/.worktrees/my-repo/src/bar.js'), [])
   ).toBe(true);
 
-  // .worktrees is exempted, whether it's an ancestor of the checkout or
-  // inside the repo (see https://github.com/nebrius/import-integrity-lint/issues/46)
+  // Default ignore directories are ignored
   expect(
-    isDefaultIgnoredPath(join('/home/me/.worktrees/my-repo/src/bar.js'))
-  ).toBe(false);
-  expect(
-    isDefaultIgnoredPath(join('/home/me/my-repo/.worktrees/feat-1/src/bar.js'))
-  ).toBe(false);
-
-  // Other dot directories are still ignored, even as ancestors
-  expect(
-    isDefaultIgnoredPath(join('/home/me/.checkouts/my-repo/src/bar.js'))
+    isDefaultIgnoredPath(join('/home/me/my-repo/node_modules/foo'), [])
   ).toBe(true);
+  expect(isDefaultIgnoredPath(join('/home/me/my-repo/dist/bar.js'), [])).toBe(
+    true
+  );
+  expect(isDefaultIgnoredPath(join('/home/me/my-repo/build/bar.js'), [])).toBe(
+    true
+  );
+  expect(isDefaultIgnoredPath(join('/home/me/my-repo/out/bar.js'), [])).toBe(
+    true
+  );
+});
 
-  // Default ignore directories are ignored, including inside a .worktrees path
-  expect(isDefaultIgnoredPath(join('/home/me/my-repo/node_modules/foo'))).toBe(
-    true
-  );
-  expect(isDefaultIgnoredPath(join('/home/me/my-repo/dist/bar.js'))).toBe(true);
-  expect(isDefaultIgnoredPath(join('/home/me/my-repo/build/bar.js'))).toBe(
-    true
-  );
-  expect(isDefaultIgnoredPath(join('/home/me/my-repo/out/bar.js'))).toBe(true);
+it('Exempts directory names listed in defaultIgnoreOverrides', () => {
+  // .worktrees is exempted whether it's an ancestor of the checkout or inside
+  // the repo (see https://github.com/nebrius/import-integrity-lint/issues/46)
+  expect(
+    isDefaultIgnoredPath(join('/home/me/.worktrees/my-repo/src/bar.js'), [
+      '.worktrees',
+    ])
+  ).toBe(false);
   expect(
     isDefaultIgnoredPath(
-      join('/home/me/.worktrees/feat-1/node_modules/foo/bar.js')
+      join('/home/me/my-repo/.worktrees/feat-1/src/bar.js'),
+      ['.worktrees']
+    )
+  ).toBe(false);
+
+  // Other dot directories are still ignored, even alongside an override
+  expect(
+    isDefaultIgnoredPath(
+      join('/home/me/my-repo/.worktrees/feat-1/src/.generated/bar.js'),
+      ['.worktrees']
     )
   ).toBe(true);
+  expect(
+    isDefaultIgnoredPath(join('/home/me/.checkouts/my-repo/src/bar.js'), [
+      '.worktrees',
+    ])
+  ).toBe(true);
+
+  // Default ignore directories are still ignored with an unrelated override
+  expect(
+    isDefaultIgnoredPath(
+      join('/home/me/.worktrees/feat-1/node_modules/foo/bar.js'),
+      ['.worktrees']
+    )
+  ).toBe(true);
+
+  // Default ignore directories can be exempted too
+  expect(
+    isDefaultIgnoredPath(join('/home/me/my-repo/dist/bar.js'), ['dist'])
+  ).toBe(false);
+
+  // Dot files are ignored by default and exemptable by exact name, same as
+  // folders
+  expect(isDefaultIgnoredPath(join('/home/me/my-repo/src/.env'), [])).toBe(
+    true
+  );
+  expect(
+    isDefaultIgnoredPath(join('/home/me/my-repo/src/.env'), ['.env'])
+  ).toBe(false);
 });
 
 it('Can split paths into segments', () => {

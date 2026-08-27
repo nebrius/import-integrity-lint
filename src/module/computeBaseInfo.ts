@@ -32,6 +32,7 @@ type ComputeBaseInfoOptions = Pick<
   | 'wildcardAliases'
   | 'ignorePatterns'
   | 'ignoreOverridePatterns'
+  | 'defaultIgnoreOverrides'
   | 'packageName'
 > & {
   getEntryPointSpecifier: GetEntryPointSpecifier;
@@ -47,6 +48,7 @@ export function computeBaseInfo({
   wildcardAliases,
   ignorePatterns,
   ignoreOverridePatterns,
+  defaultIgnoreOverrides,
   packageName,
   getEntryPointSpecifier,
   isExternallyImportedCheck,
@@ -63,7 +65,8 @@ export function computeBaseInfo({
   const { files, packageJsons } = getFilesSync(
     packageRootDir,
     ignorePatterns,
-    ignoreOverridePatterns
+    ignoreOverridePatterns,
+    defaultIgnoreOverrides
   );
 
   for (const packageJson of packageJsons) {

@@ -1,8 +1,10 @@
 # CHANGELOG
 
-## 1.2.1 (2026-08-27)
+## 1.3.0 (2026-08-27)
 
-- Don't always ignore files in `.worktree` folders.
+- Added the `defaultIgnoreOverrides` setting for analyzing files and folders that are ignored by default, such as git worktrees in a hidden folder
+- Fixed `.gitignore` files above the package root not always being applied
+- Improved startup performance in packages containing large hidden folders such as `.git` or `.next`
 
 ## 1.2.0 (2026-07-19)
 

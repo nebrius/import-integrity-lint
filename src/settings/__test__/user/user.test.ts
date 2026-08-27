@@ -49,6 +49,7 @@ it('Fetchings user supplied settings', () => {
         },
         ignorePatterns: ['src/b*'],
         ignoreOverridePatterns: ['src/c*'],
+        defaultIgnoreOverrides: ['.worktrees', 'dist'],
         entryPointFiles: { '.': './src/a.ts' },
         externallyImportedFiles: ['src/b.ts'],
       },
@@ -67,6 +68,7 @@ it('Fetchings user supplied settings', () => {
     packageName: undefined,
     ignorePatterns: [{ dir: TEST_PACKAGE_DIR, contents: 'src/b*' }],
     ignoreOverridePatterns: [{ dir: TEST_PACKAGE_DIR, contents: 'src/c*' }],
+    defaultIgnoreOverrides: ['.worktrees', 'dist'],
     testFilePatterns: [],
     wildcardAliases: {
       '@/': join(TEST_PACKAGE_DIR, 'src' + sep),
@@ -729,6 +731,7 @@ it('Loads package settings from import-integrity.config.json in single-repo mode
     ignoreOverridePatterns: [
       { dir: CONFIG_FILE_PACKAGE_DIR, contents: 'src/c*' },
     ],
+    defaultIgnoreOverrides: [],
     testFilePatterns: [],
     wildcardAliases: {
       '@/': join(CONFIG_FILE_PACKAGE_DIR, 'src' + sep),

@@ -34,6 +34,7 @@ it('Fetches settings from tsconfig with package path extends', () => {
     externallyImported: [],
     ignorePatterns: [],
     ignoreOverridePatterns: [],
+    defaultIgnoreOverrides: [],
     testFilePatterns: [],
     wildcardAliases: {
       '@pkg/': join(TEST_PACKAGE_DIR, 'src/'),
