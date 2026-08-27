@@ -18,7 +18,7 @@ Default: aliases in `tsconfig.json`
 
 Import Integrity defaults to the values inside of `tsconfig.json`, if present, with a few limitations:
 
-- Aliases that point to files outside of `packageRootDir`, or point to files inside of `node_modules`, `build`, `out`, `dist`, or any folder or file that starts with a `.`, are ignored
+- Aliases that point to files outside of `packageRootDir`, or point to files inside of `node_modules`, `build`, `out`, `dist`, or any folder or file that starts with a `.` (with the exception of `.worktrees`), are ignored
 - Aliases with more than one file, e.g. `"@/": ["a.ts", "b.ts"]`, are ignored
 
 Example:

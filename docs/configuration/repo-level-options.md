@@ -14,7 +14,7 @@ Type: `string`
 
 Import Integrity uses `packageRootDir` to scan for files in the current package. When Import Integrity starts up for the first time, it creates a map of all files inside of `packageRootDir`, filters out any ignored files (see [`ignorePatterns`](./package-level-options#ignorepatterns) for more info), and analyzes the remaining files.
 
-Note: Import Integrity does not analyze files in folders named `node_modules`, `build`, `out`, `dist`, and any folder or file that starts with a `.`, regardless of ignore settings. These folders are almost always ignored anyways, and hard-coding this list improves performance. If you want to analyze files in one of these folders, file an issue and we'll find a way to support your use case.
+Note: Import Integrity does not analyze files in folders named `node_modules`, `build`, `out`, `dist`, and any folder or file that starts with a `.`, regardless of ignore settings. These folders are almost always ignored anyways, and hard-coding this list improves performance. The only exception is `.worktrees`, so that git worktrees checked out inside a hidden folder are still analyzed. If you want to analyze files in another dot-prefixed folder, file an issue and we'll find a way to support your use case.
 
 In single package mode, you must set `packageRootDir` directly in `settings['import-integrity']`.
 

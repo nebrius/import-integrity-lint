@@ -7,6 +7,7 @@ import {
   getFiles,
   getRawMonorepoPackageSettings,
   getRelativePathFromRoot,
+  isDefaultIgnoredPath,
   splitPathIntoSegments,
   trimTrailingPathSeparator,
 } from '../files.js';
@@ -111,6 +112,47 @@ it('ignoreOverridePatterns works with glob patterns', async () => {
       filePath: join(TEST_PACKAGE_DIR, 'src/c.ts'),
     },
   ]);
+});
+
+it('Ignores default directories and dot directories, except .worktrees', () => {
+  // Ordinary paths are analyzed
+  expect(
+    isDefaultIgnoredPath(join('/home/me/projects/my-repo/src/bar.js'))
+  ).toBe(false);
+
+  // Dot directories inside the package are ignored
+  expect(
+    isDefaultIgnoredPath(join('/home/me/my-repo/src/.generated/bar.js'))
+  ).toBe(true);
+
+  // .worktrees is exempted, whether it's an ancestor of the checkout or
+  // inside the repo (see https://github.com/nebrius/import-integrity-lint/issues/46)
+  expect(
+    isDefaultIgnoredPath(join('/home/me/.worktrees/my-repo/src/bar.js'))
+  ).toBe(false);
+  expect(
+    isDefaultIgnoredPath(join('/home/me/my-repo/.worktrees/feat-1/src/bar.js'))
+  ).toBe(false);
+
+  // Other dot directories are still ignored, even as ancestors
+  expect(
+    isDefaultIgnoredPath(join('/home/me/.checkouts/my-repo/src/bar.js'))
+  ).toBe(true);
+
+  // Default ignore directories are ignored, including inside a .worktrees path
+  expect(isDefaultIgnoredPath(join('/home/me/my-repo/node_modules/foo'))).toBe(
+    true
+  );
+  expect(isDefaultIgnoredPath(join('/home/me/my-repo/dist/bar.js'))).toBe(true);
+  expect(isDefaultIgnoredPath(join('/home/me/my-repo/build/bar.js'))).toBe(
+    true
+  );
+  expect(isDefaultIgnoredPath(join('/home/me/my-repo/out/bar.js'))).toBe(true);
+  expect(
+    isDefaultIgnoredPath(
+      join('/home/me/.worktrees/feat-1/node_modules/foo/bar.js')
+    )
+  ).toBe(true);
 });
 
 it('Can split paths into segments', () => {

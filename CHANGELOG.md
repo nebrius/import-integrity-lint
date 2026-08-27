@@ -1,5 +1,9 @@
 # CHANGELOG
 
+## 1.2.1 (2026-08-27)
+
+- Don't always ignore files in `.worktree` folders.
+
 ## 1.2.0 (2026-07-19)
 
 - Added an [agent skill](skills/import-integrity/SKILL.md) that AI can use to fix violations

@@ -16,16 +16,26 @@ type PotentialFile = {
   stats: Stats;
 };
 
-// Remember to update the README when changing this list
+// Remember to update the docs when changing these lists (see
+// docs/configuration/repo-level-options.md and package-level-options.md)
 const DEFAULT_IGNORE_DIRECTORIES = ['node_modules', 'dist', 'build', 'out'];
+const DEFAULT_IGNORE_DOT_DIRECTORY_EXCEPTIONS = ['.worktrees'];
 
 // Check if a path should be ignored by default, including if any path segment
-// starts with a dot (e.g. .git, .next, etc.)
+// starts with a dot (e.g. .git, .next, etc.) and is not one of the exceptions
+// listed above
 export function isDefaultIgnoredPath(path: string) {
   return (
     DEFAULT_IGNORE_DIRECTORIES.some(
       (dir) => path.includes(sep + dir + sep) || path.endsWith(sep + dir)
-    ) || path.includes(sep + '.')
+    ) ||
+    path
+      .split(sep)
+      .some(
+        (segment) =>
+          segment.startsWith('.') &&
+          !DEFAULT_IGNORE_DOT_DIRECTORY_EXCEPTIONS.includes(segment)
+      )
   );
 }
 
