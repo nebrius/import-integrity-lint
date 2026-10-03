@@ -12,7 +12,7 @@ A high-performance ESLint and Oxlint plugin for analyzing import and export rela
 - 🤖 **Guardrails for agentic coding** that catch common AI-generated mistakes before they ship
 
 > [!TIP]
-> **Migrating from `import-integrity-lint`?** See the [migration guide](https://nebrius.github.io/import-integrity-lint/guide/migration).
+> **Migrating from `eslint-plugin-fast-import`?** See the [migration guide](https://nebrius.github.io/import-integrity-lint/guide/migration).
 
 ## Quickstart
 
