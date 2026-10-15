@@ -39,8 +39,7 @@ export const noTestOnlyImports = createRule({
     }
 
     const { fileInfo } = esmInfo;
-    /* istanbul ignore if */
-    if (fileInfo.fileType !== 'code') {
+    if (fileInfo.fileType !== 'code' || !isNonTestFile(context.filename)) {
       return {};
     }
 
@@ -63,7 +62,6 @@ export const noTestOnlyImports = createRule({
       }
 
       if (
-        isNonTestFile(context.filename) &&
         !exportEntry.importedBy.some((i) => isNonTestFile(i.filePath)) &&
         !exportEntry.exportName?.startsWith('_testOnly')
       ) {

@@ -1,6 +1,8 @@
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import type { ParsedPackageSettings } from '../../../../settings/settings.js';
+import { markSettingsForRefresh } from '../../../../settings/settings.js';
 import type { AnalyzedCodeFileDetails } from '../../../../types/analyzed.js';
 import {
   getPackageInfo,
@@ -504,4 +506,69 @@ it('Ambiguous dynamic + dynamic entry points throw during package initialization
   expect(() => initializePackage(settings)).toThrow(
     /Multiple entry points matched for file ".*\.ts"\. Entry points must not be ambiguous\./
   );
+});
+
+// ─── Package discovered after initialization ────────────────────────────────
+//
+// In editor mode, a package created after startup is picked up when the file
+// watcher marks settings for refresh and the next lint re-runs discovery.
+// initializeRepo then sees a mix of already-initialized packages and one new
+// one. It must initialize only the new package and recompute cross-package
+// info so that existing packages see the new importer.
+
+describe('Package discovered after initialization', () => {
+  const PACKAGE_I_DIR = join(PACKAGES_DIR, 'packageI');
+  const FILE_I = join(PACKAGE_I_DIR, 'i.ts');
+
+  afterEach(() => {
+    rmSync(PACKAGE_I_DIR, { recursive: true, force: true });
+  });
+
+  it('Initializes a package discovered after the initial repo initialization', () => {
+    initialize();
+
+    // Create a new workspace package on disk
+    mkdirSync(PACKAGE_I_DIR, { recursive: true });
+    writeFileSync(
+      join(PACKAGE_I_DIR, 'package.json'),
+      JSON.stringify({ name: '@test/package-i' })
+    );
+    writeFileSync(
+      FILE_I,
+      `// @ts-expect-error — cross-package import fixture
+import type { A } from '@test/package-a';
+
+export type I = A;
+`
+    );
+
+    // Simulate a file watcher tick followed by the next lint
+    markSettingsForRefresh(PACKAGE_A_DIR);
+    initialize();
+
+    const pkgIInfo = getPackageInfo(PACKAGE_I_DIR);
+    expect(pkgIInfo.files.has(FILE_I)).toBe(true);
+
+    // Cross-package info was recomputed: packageA's entry point now sees the
+    // importer in the new package, exactly once
+    const pkgAInfo = getPackageInfo(PACKAGE_A_DIR);
+    const fileA = pkgAInfo.packageEntryPointExports.get('@test/package-a');
+    assertDefined(fileA, '@test/package-a entry point missing on packageA');
+    const aExport = findExport(fileA, 'A');
+    assertDefined(aExport, 'A export missing on @test/package-a');
+    const newImporters = aExport.externallyImportedBy.filter(
+      (entry) => entry.filePath === FILE_I
+    );
+    expect(newImporters).toHaveLength(1);
+    expect(newImporters[0]).toMatchObject({
+      packageRootDir: PACKAGE_I_DIR,
+      filePath: FILE_I,
+      importEntry: {
+        type: 'singleImport',
+        importName: 'A',
+        moduleSpecifier: '@test/package-a',
+      },
+    });
+    expectNoDuplicateExternalImporters(aExport.externallyImportedBy);
+  });
 });

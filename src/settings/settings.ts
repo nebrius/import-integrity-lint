@@ -109,10 +109,10 @@ export function markSettingsForRefresh(packageRootDir: string) {
         'Could not get repo cache settings from package cache settings'
       );
     }
-    repoSettingsCache.set(packageRootDir, {
-      settings: repoCacheEntry.settings,
-      refresh: true,
-    });
+    // The flag lives on the repo-root entry, which is the entry getRepoSettings
+    // resets after recomputing, so a refresh costs exactly one recompute and is
+    // picked up by the next lint of any file in the repo
+    repoCacheEntry.refresh = true;
   }
 }
 

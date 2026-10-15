@@ -675,6 +675,36 @@ it('markSettingsForRefresh forces a re-read of user settings (monorepo)', () => 
   expect(getRepoSettings(context).mode).toBe('fix');
 });
 
+it('markSettingsForRefresh triggers exactly one recompute, repo-wide (monorepo)', () => {
+  const settings = {
+    'import-integrity': { monorepoRootDir: MONOREPO_DIR },
+  };
+  const contextA = { filename: MONOREPO_FILE_A, settings };
+  const contextC = { filename: MONOREPO_FILE_C, settings };
+
+  // Package settings objects are replaced wholesale on every recompute, so
+  // object identity tells us whether a lookup recomputed or hit the cache
+  const initial = getAllPackageSettings(contextA).packageSettings;
+
+  // Marking forces a recompute on the next lookup...
+  markSettingsForRefresh(MONOREPO_PKG_ONE);
+  const afterRefresh = getAllPackageSettings(contextA).packageSettings;
+  expect(afterRefresh).not.toBe(initial);
+
+  // ...and the lookup after that must hit the cache. The refresh flag used to
+  // be stored under the package root and never cleared, so every subsequent
+  // lookup for a file in that package recomputed settings
+  const afterSettle = getAllPackageSettings(contextA).packageSettings;
+  expect(afterSettle).toBe(afterRefresh);
+
+  // The flag is repo-wide: marking package one must cause the next lookup for
+  // a file in package two to recompute, observed on package two's own object
+  const twoBefore = getAllPackageSettings(contextC).packageSettings;
+  markSettingsForRefresh(MONOREPO_PKG_ONE);
+  const twoAfter = getAllPackageSettings(contextC).packageSettings;
+  expect(twoAfter).not.toBe(twoBefore);
+});
+
 // ─── getUserPackageSettingsFromConfigFile ────────────────────────────────────
 
 it('Throws a formatted error when the config file contains invalid JSON', () => {

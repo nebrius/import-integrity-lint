@@ -1,5 +1,10 @@
 # CHANGELOG
 
+## 1.3.1 (2026-10-15)
+
+- Fixed a lint-time slowdown in large monorepos caused by repeatedly re-scanning package root paths on every rule invocation ([#47](https://github.com/nebrius/import-integrity-lint/issues/47))
+- Fixed settings being recomputed on every rule invocation in editor mode in monorepos, instead of once after each file watcher update
+
 ## 1.3.0 (2026-08-27)
 
 - Added the `defaultIgnoreOverrides` setting for analyzing files and folders that are ignored by default, such as git worktrees in a hidden folder

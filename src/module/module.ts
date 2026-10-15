@@ -31,7 +31,6 @@ import {
   getDependenciesFromPackageJson,
   getRelativePathFromRoot,
 } from '../util/files.js';
-import { getSubpathEntry } from '../util/getSubpathEntry.js';
 import { debug, formatMilliseconds } from '../util/logging.js';
 import { computeAnalyzedInfo } from './computeAnalyzedInfo.js';
 import {
@@ -51,31 +50,13 @@ import {
 
 // When running in monorepos, we need to track package info for each root dir
 // separately, since they have different root dirs, entry points, etc. To
-// support this, we use a map from root dir to package info.
-
+// support this, we use a map from root dir to package info. All three maps are
+// always written together for a given root dir and never deleted from
+// individually, with analyzedPackageInfos written last, so its presence
+// implies the other two exist.
 const basePackageInfos = new Map<string, BasePackageInfo>();
-function getBasePackageInfo(filename: string) {
-  return getSubpathEntry({
-    filePath: filename,
-    data: basePackageInfos,
-  });
-}
-
 const resolvedPackageInfos = new Map<string, ResolvedPackageInfo>();
-function getResolvedPackageInfo(filename: string) {
-  return getSubpathEntry({
-    filePath: filename,
-    data: resolvedPackageInfos,
-  });
-}
-
 const analyzedPackageInfos = new Map<string, AnalyzedPackageInfo>();
-function getAnalyzedPackageInfo(filename: string) {
-  return getSubpathEntry({
-    filePath: filename,
-    data: analyzedPackageInfos,
-  });
-}
 
 function getGetEntryPointSpecifier({
   packageRootDir,
@@ -191,12 +172,8 @@ export function initializePackage({
   entryPoints,
   externallyImported,
 }: ParsedPackageSettings): boolean {
-  // If we've already analyzed the package and settings haven't changed, bail
-  if (
-    getBasePackageInfo(packageRootDir) &&
-    getResolvedPackageInfo(packageRootDir) &&
-    getAnalyzedPackageInfo(packageRootDir)
-  ) {
+  // If we've already analyzed the package, bail
+  if (analyzedPackageInfos.has(packageRootDir)) {
     return false;
   }
 
@@ -280,7 +257,7 @@ function initializeRepoInfo() {
 }
 
 export function getPackageInfo(packageRootDir: string) {
-  const analyzedPackageInfo = getAnalyzedPackageInfo(packageRootDir);
+  const analyzedPackageInfo = analyzedPackageInfos.get(packageRootDir);
   /* istanbul ignore if */
   if (!analyzedPackageInfo) {
     exitWithInternalError('Package info requested before initialization');
@@ -317,9 +294,9 @@ export function updateCacheFromFileSystem({
   packageSettings: ParsedPackageSettings;
   operationStart: number;
 }) {
-  const basePackageInfo = getBasePackageInfo(packageRootDir);
-  let resolvedPackageInfo = getResolvedPackageInfo(packageRootDir);
-  let analyzedPackageInfo = getAnalyzedPackageInfo(packageRootDir);
+  const basePackageInfo = basePackageInfos.get(packageRootDir);
+  let resolvedPackageInfo = resolvedPackageInfos.get(packageRootDir);
+  let analyzedPackageInfo = analyzedPackageInfos.get(packageRootDir);
 
   // This shouldn't be possible and is just to make sure TypeScript is happy
   /* istanbul ignore if */
@@ -503,9 +480,9 @@ export function updateCacheForFile({
   ast: TSESTree.Program;
   packageSettings: ParsedPackageSettings;
 }) {
-  const basePackageInfo = getBasePackageInfo(filePath);
-  const resolvedPackageInfo = getResolvedPackageInfo(filePath);
-  const analyzedPackageInfo = getAnalyzedPackageInfo(filePath);
+  const basePackageInfo = basePackageInfos.get(packageRootDir);
+  const resolvedPackageInfo = resolvedPackageInfos.get(packageRootDir);
+  const analyzedPackageInfo = analyzedPackageInfos.get(packageRootDir);
 
   // This shouldn't be possible and is just to make sure TypeScript is happy
   /* istanbul ignore if */
