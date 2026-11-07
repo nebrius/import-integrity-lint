@@ -243,13 +243,23 @@ export function getRelativePathFromRoot(
   return relativePath;
 }
 
+// Whether `path` is `dir` itself or inside it. A plain `path.startsWith(dir)`
+// also matches a sibling whose name starts the same way, such as `foo-bar/`
+// for `foo/`. Pass `separator` for paths that use `/` on every platform, such
+// as package.json exports.
+export function isPathWithinDir(dir: string, path: string, separator = sep) {
+  return (
+    path.startsWith(dir) &&
+    (path.length === dir.length ||
+      // The filesystem root already ends with a separator
+      dir.endsWith(separator) ||
+      path[dir.length] === separator)
+  );
+}
+
 type IgnoreEntry = {
   // The directory the ignore patterns are relative to
   dir: string;
-  // dir with a trailing path separator, used to check whether a file is inside
-  // dir. A plain `startsWith(dir)` check would also match sibling directories
-  // that share a name prefix (e.g. `foo-bar/` for `foo/`)
-  dirPrefix: string;
   ig: Ignore;
 };
 
@@ -258,15 +268,6 @@ type IgnoreData = {
   ignores: IgnoreEntry[];
   overrides: IgnoreEntry[];
 };
-
-function createIgnoreEntry(dir: string, contents: string): IgnoreEntry {
-  return {
-    dir,
-    // The filesystem root already ends with a separator
-    dirPrefix: dir.endsWith(sep) ? dir : dir + sep,
-    ig: ignore().add(contents),
-  };
-}
 
 // Map from packageRootDir to ignore data
 const ignoreData = new Map<string, IgnoreData>();
@@ -283,21 +284,21 @@ export function isFileIgnored(packageRootDir: string, filePath: string) {
   }
 
   // Check override patterns first - if matched, file is NOT ignored
-  for (const { dir, dirPrefix, ig } of data.overrides) {
-    if (filePath.startsWith(dirPrefix) && ig.ignores(relative(dir, filePath))) {
+  for (const { dir, ig } of data.overrides) {
+    if (isPathWithinDir(dir, filePath) && ig.ignores(relative(dir, filePath))) {
       data.cache.set(filePath, false);
       return false;
     }
   }
 
   // Check ignore patterns
-  for (const { dir, dirPrefix, ig } of data.ignores) {
+  for (const { dir, ig } of data.ignores) {
     // Ignore file paths are relative to the directory the ignore file is in,
     // and needs files passed in to check to also be relative to that same
     // directory, so we get the relative path to the ignore file directory.
     // Files outside of that directory must be skipped, since `ignore` throws
     // on paths that start with `../`
-    if (filePath.startsWith(dirPrefix) && ig.ignores(relative(dir, filePath))) {
+    if (isPathWithinDir(dir, filePath) && ig.ignores(relative(dir, filePath))) {
       data.cache.set(filePath, true);
       return true;
     }
@@ -478,14 +479,19 @@ function initializeIgnores(
 
   ignoreData.set(packageRootDir, {
     ignores: [
-      ...ignorePatterns.map((i) => createIgnoreEntry(i.dir, i.contents)),
-      ...ignoreFiles.map((i) =>
-        createIgnoreEntry(dirname(i.filePath), i.contents)
-      ),
+      ...ignorePatterns.map((i) => ({
+        dir: i.dir,
+        ig: ignore().add(i.contents),
+      })),
+      ...ignoreFiles.map((i) => ({
+        dir: dirname(i.filePath),
+        ig: ignore().add(i.contents),
+      })),
     ],
-    overrides: ignoreOverridePatterns.map((i) =>
-      createIgnoreEntry(i.dir, i.contents)
-    ),
+    overrides: ignoreOverridePatterns.map((i) => ({
+      dir: i.dir,
+      ig: ignore().add(i.contents),
+    })),
     cache: new Map<string, boolean>(),
   });
 }

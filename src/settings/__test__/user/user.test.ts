@@ -411,6 +411,10 @@ it('Ignores aliases that point outside of packageRootDir', () => {
         alias: {
           '@foo': '../foo',
           '@bar/*': '../bar/*',
+          // Sibling directories whose names start with "project", the name of
+          // the package directory, are still outside it
+          '@sibling': '../project-with-config/a.ts',
+          '@siblings/*': '../project-with-multiple-configs/*',
         },
       },
     },

@@ -5,7 +5,7 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import ts from 'typescript';
 
 import { VALID_EXTENSIONS } from '../util/code.js';
-import { isDefaultIgnoredPath } from '../util/files.js';
+import { isDefaultIgnoredPath, isPathWithinDir } from '../util/files.js';
 import { warn } from '../util/logging.js';
 import type { PackageSettings } from './user.js';
 
@@ -257,7 +257,10 @@ function parseTsConfig(
       continue;
     }
     if (
-      !resolvedPathEntry.startsWith(absoluteRootDir ?? dirname(configPath)) ||
+      !isPathWithinDir(
+        absoluteRootDir ?? dirname(configPath),
+        resolvedPathEntry
+      ) ||
       isDefaultIgnoredPath(resolvedPathEntry, defaultIgnoreOverrides)
     ) {
       continue;

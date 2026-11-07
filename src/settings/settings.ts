@@ -8,6 +8,7 @@ import type { GenericContext } from '../types/context.js';
 import { exitWithError, exitWithInternalError } from '../util/error.js';
 import {
   getRawMonorepoPackageSettings,
+  isPathWithinDir,
   trimTrailingPathSeparator,
 } from '../util/files.js';
 import { getSubpathEntry } from '../util/getSubpathEntry.js';
@@ -268,7 +269,7 @@ function populatePackageSettingsCache(userPackageSettings: PackageSettings) {
         inferredEntryPoints[key] = value;
       }
       // Exports under TypeScript's outDir get mapped back to source
-      else if (mapping && value.startsWith(mapping.outDir)) {
+      else if (mapping && isPathWithinDir(mapping.outDir, value, '/')) {
         const baseFile = value.replace(mapping.outDir, mapping.rootDir);
         // Strip an extension. Treats `.d.ts`, `.d.mts`, `.d.cts` as single
         // units so the types-only-package case (`exports: { '.': { types:
@@ -335,7 +336,7 @@ function populatePackageSettingsCache(userPackageSettings: PackageSettings) {
 
     // Filter out paths that don't resolve to files inside packageRootDir, since
     // they're either third party or doing something not supported
-    if (!path.startsWith(packageRootDir)) {
+    if (!isPathWithinDir(packageRootDir, path)) {
       continue;
     }
 

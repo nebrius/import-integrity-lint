@@ -22,7 +22,7 @@ In monorepo mode, every package still has a `packageRootDir` under the hood, but
 
 `packageRootDir` must be an absolute path that points to the directory containing the package's `package.json` and `tsconfig.json`, not a nested `src` directory.
 
-Files outside `packageRootDir` are not analyzed, so keep all of a package's first-party code inside it. An import of such a file resolves to nothing, and no rule checks it: [`no-unresolved-imports`](../rules/no-unresolved-imports/) doesn't report it even when the imported name doesn't exist, and cycles through the file aren't detected. In a monorepo, import another workspace package by its package name rather than by a relative path into its folder.
+Files outside `packageRootDir` are not analyzed, so keep all of a package's first-party code inside it. A relative import of such a file resolves to nothing, and no rule checks it: [`no-unresolved-imports`](../rules/no-unresolved-imports/) doesn't report it even when the imported name doesn't exist, and cycles through the file aren't detected. An alias that points outside `packageRootDir` is dropped, so imports through it are treated as third party, and `no-unresolved-imports` reports them as not listed in `package.json`. In a monorepo, import another workspace package by its package name rather than by a relative path or an alias into its folder.
 
 CommonJS Example:
 

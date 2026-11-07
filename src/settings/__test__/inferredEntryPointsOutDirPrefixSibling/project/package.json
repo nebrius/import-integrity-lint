@@ -1,0 +1,6 @@
+{
+  "name": "inferred-out-dir-prefix-sibling-test",
+  "exports": {
+    ".": "./dist-cjs/index.js"
+  }
+}

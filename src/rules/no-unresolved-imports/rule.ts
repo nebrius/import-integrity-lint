@@ -7,6 +7,7 @@ import type {
   AnalyzedSingleReexport,
 } from '../../types/analyzed.js';
 import { exitWithInternalError } from '../../util/error.js';
+import { isPathWithinDir } from '../../util/files.js';
 import { createRule, getESMInfo, getLocFromRange } from '../util.js';
 
 // Every statement that carries a module specifier
@@ -103,7 +104,7 @@ export const noUnresolvedImports = createRule({
           deps,
         ] of packageInfo.availableThirdPartyDependencies) {
           if (
-            context.filename.startsWith(path) &&
+            isPathWithinDir(path, context.filename) &&
             deps.some(
               (dep) =>
                 // Check if this is exactly the import specifier, e.g. 'react'

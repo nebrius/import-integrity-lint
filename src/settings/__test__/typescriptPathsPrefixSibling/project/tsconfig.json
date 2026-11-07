@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "rootDir": "src",
+    "paths": {
+      "@/*": ["src/*"],
+      "@gen/*": ["src-gen/*"]
+    }
+  }
+}

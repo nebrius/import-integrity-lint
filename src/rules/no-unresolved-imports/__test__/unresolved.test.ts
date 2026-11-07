@@ -10,12 +10,16 @@ const MONOREPO_ROOT_DIR = join(import.meta.dirname, 'project');
 const TEST_PACKAGE_DIR = join(MONOREPO_ROOT_DIR, 'packages', 'one');
 const FILE_A = join(TEST_PACKAGE_DIR, 'a.ts');
 const FILE_D = join(MONOREPO_ROOT_DIR, 'packages', 'two', 'd.ts');
+// vendor/ has its own package.json listing `vendor-only`. vendor-extra/ is a
+// sibling whose name starts with "vendor", and has no package.json of its own.
+const FILE_VENDOR = join(TEST_PACKAGE_DIR, 'vendor', 'v.ts');
+const FILE_VENDOR_EXTRA = join(TEST_PACKAGE_DIR, 'vendor-extra', 'v.ts');
 
 const ruleTester = new RuleTester({
   languageOptions: {
     parserOptions: {
       projectService: {
-        allowDefaultProject: ['*.ts*', '../two/*.ts*'],
+        allowDefaultProject: ['*.ts*', '../two/*.ts*', 'vendor*/*.ts'],
       },
       tsconfigRootDir: TEST_PACKAGE_DIR,
     },
@@ -24,6 +28,18 @@ const ruleTester = new RuleTester({
 
 ruleTester.run('no-unresolved-exports', noUnresolvedImports, {
   valid: [
+    {
+      // A package.json nested inside the package applies to the files in its
+      // directory
+      code: `import { x } from 'vendor-only'`,
+      filename: FILE_VENDOR,
+      settings: {
+        'import-integrity': {
+          monorepoRootDir: MONOREPO_ROOT_DIR,
+          mode: 'fix',
+        },
+      },
+    },
     {
       code: `import * as b from './b'`,
       filename: FILE_A,
@@ -306,6 +322,18 @@ console.log(h, i, j);`,
     {
       code: `import { unknown } from 'unknown'`,
       filename: FILE_A,
+      errors: [{ messageId: 'noTransientDependencies' }],
+      settings: {
+        'import-integrity': {
+          monorepoRootDir: MONOREPO_ROOT_DIR,
+          mode: 'fix',
+        },
+      },
+    },
+    {
+      // ...but not to a sibling directory whose name starts the same way
+      code: `import { x } from 'vendor-only'`,
+      filename: FILE_VENDOR_EXTRA,
       errors: [{ messageId: 'noTransientDependencies' }],
       settings: {
         'import-integrity': {
