@@ -334,13 +334,16 @@ function populateFileDetails(
   baseCodeFileDetails: BaseCodeFileDetails,
   resolvedCodeFileDetails: ResolvedCodeFileDetails
 ) {
+  // Note: every base entry gets a resolved counterpart, in order. The range-only
+  // cache update in module.ts patches resolved and analyzed entries by index
+  // from the base entries, so the three phases must stay index-aligned. An
+  // empty module specifier (what an editor leaves behind after auto-closing
+  // the quotes) resolves to a third party module like any other unknown
+  // specifier; a dynamic import with no static specifier can't be resolved at
+  // all and lands in the "could not resolve" bucket.
+
   // Resolve single imports
   for (const importDetails of baseCodeFileDetails.singleImports) {
-    // Lack of a module specifier means this is a dynamic import with a
-    // non-static, which we can't analyze, so we skip it
-    if (!importDetails.moduleSpecifier) {
-      continue;
-    }
     const resolvedModuleSpecifier = resolveModuleSpecifier({
       basePackageInfo,
       filePath,
@@ -355,16 +358,11 @@ function populateFileDetails(
 
   // Resolve barrel imports
   for (const importDetails of baseCodeFileDetails.barrelImports) {
-    // Lack of a module specifier means this is a dynamic import with a
-    // non-static, which we can't analyze, so we skip it
-    if (!importDetails.moduleSpecifier) {
-      continue;
-    }
     const resolvedModuleSpecifier = resolveModuleSpecifier({
       basePackageInfo,
       filePath,
       moduleSpecifier: importDetails.moduleSpecifier,
-      isTypeImport: false,
+      isTypeImport: importDetails.isTypeImport,
     });
     resolvedCodeFileDetails.barrelImports.push({
       ...importDetails,
@@ -374,17 +372,18 @@ function populateFileDetails(
 
   // Resolve dynamic imports
   for (const importDetails of baseCodeFileDetails.dynamicImports) {
-    // Lack of a module specifier means this is a dynamic import with a
-    // non-static, which we can't analyze, so we skip it
-    if (!importDetails.moduleSpecifier) {
-      continue;
-    }
-    const resolvedModuleSpecifier = resolveModuleSpecifier({
-      basePackageInfo,
-      filePath,
-      moduleSpecifier: importDetails.moduleSpecifier,
-      isTypeImport: false,
-    });
+    const resolvedModuleSpecifier: Resolved =
+      importDetails.moduleSpecifier === undefined
+        ? {
+            resolvedModuleType: 'firstPartyOther',
+            resolvedModulePath: undefined,
+          }
+        : resolveModuleSpecifier({
+            basePackageInfo,
+            filePath,
+            moduleSpecifier: importDetails.moduleSpecifier,
+            isTypeImport: false,
+          });
     resolvedCodeFileDetails.dynamicImports.push({
       ...importDetails,
       ...resolvedModuleSpecifier,
@@ -393,11 +392,6 @@ function populateFileDetails(
 
   // Resolve side effect imports
   for (const importDetails of baseCodeFileDetails.sideEffectImports) {
-    // Lack of a module specifier means this is a dynamic import with a
-    // non-static, which we can't analyze, so we skip it
-    if (!importDetails.moduleSpecifier) {
-      continue;
-    }
     const resolvedModuleSpecifier = resolveModuleSpecifier({
       basePackageInfo,
       filePath,
@@ -430,7 +424,7 @@ function populateFileDetails(
       basePackageInfo,
       filePath,
       moduleSpecifier: reexportDetails.moduleSpecifier,
-      isTypeImport: false,
+      isTypeImport: reexportDetails.isTypeReexport,
     });
     resolvedCodeFileDetails.barrelReexports.push({
       ...reexportDetails,
@@ -669,7 +663,14 @@ function resolveModuleSpecifier({
   // Check if this path is exactly a fixed alias, which means its first party
   for (const [alias, path] of Object.entries(basePackageInfo.fixedAliases)) {
     if (moduleSpecifier === alias) {
-      return formatResolvedEntry(path);
+      // A fixed alias names its target outright, so unlike the two walks above
+      // nothing has checked that the target is a file we analyze. An alias into
+      // an ignored folder (`dist/`, a dot-folder) is the usual way it isn't.
+      // Treat that like any other specifier that resolves to nothing, or phase
+      // 3 will look the file up and fail.
+      return formatResolvedEntry(
+        basePackageInfo.files.has(path) ? path : undefined
+      );
     }
   }
 

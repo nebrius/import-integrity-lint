@@ -60,6 +60,29 @@ ruleTester.run('no-cycle', noCycle, {
         },
       },
     },
+
+    // Type-only statements are erased at compile time, so they can't take part
+    // in a runtime cycle. The simple fixture is a -> c -> b -> a; each case
+    // replaces a's only edge with a type-only statement of a different shape.
+    ...[
+      `import type { c } from './c';`,
+      `import type * as c from './c';`,
+      `export type { c } from './c';`,
+      `export type * from './c';`,
+      `export type * as c from './c';`,
+    ].map((statement) => ({
+      code: `${statement}
+
+export const a = 10;
+`,
+      filename: FILE_A,
+      settings: {
+        'import-integrity': {
+          packageRootDir: SIMPLE_PACKAGE_DIR,
+          mode: 'fix',
+        },
+      },
+    })),
   ],
 
   invalid: [

@@ -93,6 +93,15 @@ export type BaseBarrelImport = BaseESMStatement & {
    * then `importAlias` equals `foo`
    */
   importAlias: string;
+
+  /**
+   * If true, then this is a TypeScript type import, e.g.
+   *
+   * ```
+   * import type * as foo from './bar'
+   * ```
+   */
+  isTypeImport: boolean;
 };
 
 export type BaseDynamicImport = BaseESMStatement & {
@@ -109,7 +118,9 @@ export type BaseDynamicImport = BaseESMStatement & {
    * import('./bar')
    * ```
    *
-   * Note: if the value is not a string literal, then this value is `undefined`
+   * Note: `undefined` when the specifier is not a string literal, e.g.
+   * `import(someVariable)`. The statement is still recorded, so that every
+   * import has an entry, but it cannot be resolved.
    */
   moduleSpecifier: string | undefined;
 };
@@ -128,9 +139,9 @@ export type BaseSideEffectImport = BaseESMStatement & {
    * import './bar';
    * ```
    *
-   * Note: if the value is not a string literal, then this value is `undefined`
+   * Import declarations only accept a string literal, so this is always set.
    */
-  moduleSpecifier: string | undefined;
+  moduleSpecifier: string;
 };
 
 /* Exports */
@@ -266,6 +277,16 @@ export type BaseBarrelReexport = BaseESMStatement & {
    * ```
    */
   exportName: string | undefined;
+
+  /**
+   * If true, then this is a TypeScript type reexport, e.g.
+   *
+   * ```
+   * export type * from './bar'
+   * export type * as foo from './bar'
+   * ```
+   */
+  isTypeReexport: boolean;
 
   /**
    * Indicates whether or not this rexport is an entry point for the app. For

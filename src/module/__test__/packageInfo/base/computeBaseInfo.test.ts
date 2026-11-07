@@ -292,11 +292,13 @@ const EXPECTED_FILE_B: StrippedBaseFileDetails = {
   barrelImports: [
     {
       type: 'barrelImport',
+      isTypeImport: false,
       importAlias: 'barrel1',
       moduleSpecifier: './a',
     },
     {
       type: 'barrelImport',
+      isTypeImport: false,
       importAlias: 'barrel2',
       moduleSpecifier: './a',
     },
@@ -310,7 +312,7 @@ const EXPECTED_FILE_B: StrippedBaseFileDetails = {
   sideEffectImports: [
     {
       type: 'sideEffectImport',
-      moduleSpecifier: './a.js',
+      moduleSpecifier: './a',
     },
   ],
   singleReexports: [],
@@ -375,6 +377,7 @@ const EXPECTED_FILE_C: StrippedBaseFileDetails = {
   barrelReexports: [
     {
       type: 'barrelReexport',
+      isTypeReexport: false,
       exportName: undefined,
       moduleSpecifier: './a',
       isEntryPoint: false,
@@ -382,6 +385,7 @@ const EXPECTED_FILE_C: StrippedBaseFileDetails = {
     },
     {
       type: 'barrelReexport',
+      isTypeReexport: false,
       exportName: 'c',
       moduleSpecifier: './a',
       isEntryPoint: false,
@@ -455,7 +459,11 @@ it('Computes base info', () => {
 });
 
 const NEW_FILE_PATH = join(TEST_PACKAGE_DIR, 'newFile.ts');
-const NEW_FILE_CONTENTS_ADD = `import { a1 } from './a'`;
+// The dynamic import has a non-literal specifier: it can't be resolved, but
+// every import statement still gets an entry.
+const NEW_FILE_CONTENTS_ADD = `import { a1 } from './a';
+const target = './a';
+void import(target);`;
 const NEW_FILE_CONTENTS_MODIFY = `import { a2 } from './a';
 import { a1 } from './a';
 export { a1 } from './a';
@@ -503,7 +511,12 @@ it('Adds, modifies, and deletes a new file', () => {
         },
       ],
       barrelImports: [],
-      dynamicImports: [],
+      dynamicImports: [
+        {
+          type: 'dynamicImport',
+          moduleSpecifier: undefined,
+        },
+      ],
       sideEffectImports: [],
       singleReexports: [],
       barrelReexports: [],

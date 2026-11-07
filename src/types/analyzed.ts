@@ -62,8 +62,14 @@ type AnalyzedImportBase =
        *
        * then `rootModulePath` in `foo.ts` is `/path/to/baz.ts`. Contrast this
        * with `resolvedModulePath` which equals `/path/to/bar.ts`.
+       *
+       * Note: value is `undefined` when the last reexport in the chain points
+       * at a module specifier that can't be resolved, same as
+       * `resolvedModulePath` on that reexport. The plugin only knows the files
+       * it analyzes, so the target may be an ignored file such as build
+       * output rather than a missing one.
        */
-      rootModulePath: string;
+      rootModulePath: string | undefined;
 
       // Similar to the resolved equivalent, we have to add this to narrow down
       // types properly in test code
@@ -118,8 +124,13 @@ type AnalyzedImportBase =
 
 type AnalyzedExportBase = {
   /**
-   * A list of files and import entries that imports this export, including
-   * indirect imports that are funneled through reexport statements.
+   * The single imports whose by-name resolution ends at or passes through this
+   * entry. An export is listed when an import names it, directly or through a
+   * chain of named reexports; a named reexport is listed when it is a link in
+   * that chain; a bare `export *` is listed when it is the statement that
+   * supplied the name. When no code the plugin can see supplies the name,
+   * every bare `export *` of a first party module the plugin can't look
+   * inside is listed, since any of them may.
    *
    * This also includes reexports that are entry points, since they are acting
    * like an import for the purposes of this plugin
@@ -153,14 +164,20 @@ type AnalyzedExportBase = {
   }>;
 
   /**
-   * A list of files that barrel imports this export, including indirect imports
-   * that are funneled through reexport statements.
+   * Every import whose namespace object contains this entry: `import * as`,
+   * `import()`, an entry-point `export *` / `export * as`, or a single import
+   * that resolves to an `export * as` namespace. Namespace membership is
+   * followed precisely: a single reexport inside a namespace contributes only
+   * the export it names, a nested `export * as` contributes its whole
+   * namespace, and a bare `export *` never forwards `default`. Reexport
+   * statements inside the namespace are members too and are recorded here.
    *
    * This also includes reexports that are entry points, since they are acting
    * like an import for the purposes of this plugin
    *
    * Note: unlike `importedBy`, entries here do not actually guarantee this
-   * import is actually used
+   * export is actually used, since the code holding the namespace object may
+   * never touch it
    */
   barrelImportedBy: Array<{
     filePath: string;

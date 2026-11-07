@@ -74,7 +74,7 @@ An optional custom error message shown when a restriction is violated. Strongly 
 
 ### `excludeTypeImports`
 
-A boolean. When `true`, type-only imports (`import type`) are not considered restricted even if the underlying export is. Defaults to `false`.
+A boolean. When `true`, type-only imports and re-exports (`import type`, `export type ... from`) are not considered restricted even if the underlying export is. Defaults to `false`.
 
 ### File path matching
 

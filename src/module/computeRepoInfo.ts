@@ -27,13 +27,18 @@ export function computeRepoInfo(
 
   // Reset externallyImportedBy arrays. Since we don't do more intelligent cache
   // updates for package info, we have to first reset externallyImportedBy
-  // arrays, otherwise we end up with duplicates.
+  // arrays, otherwise we end up with duplicates. Reexport entries receive
+  // pushes below just like exports do, so they need the same reset.
   for (const [, analyzedPackageInfo] of analyzedPackageInfos) {
     for (const [, fileDetails] of analyzedPackageInfo.files) {
       if (fileDetails.fileType !== 'code') {
         continue;
       }
-      for (const exportEntry of fileDetails.exports) {
+      for (const exportEntry of [
+        ...fileDetails.exports,
+        ...fileDetails.singleReexports,
+        ...fileDetails.barrelReexports,
+      ]) {
         exportEntry.externallyImportedBy = [];
       }
     }
@@ -57,9 +62,10 @@ export function computeRepoInfo(
           continue;
         }
 
-        // We can't analyze dynamic import specifiers that can't be resolve
-        // statically (aka moduleSpecifier is undefined), so we skip them
-        if (!importEntry.moduleSpecifier) {
+        // A dynamic import with a non-literal specifier is never third party
+        // (it can't be resolved at all), but the type doesn't know that
+        /* istanbul ignore if */
+        if (importEntry.moduleSpecifier === undefined) {
           continue;
         }
 

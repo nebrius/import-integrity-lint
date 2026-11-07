@@ -74,6 +74,14 @@ ruleTester.run('prefer-alias-imports (always)', preferAliasImports, {
       settings: WILDCARD_SETTINGS,
       options: [{ mode: 'always' }],
     },
+    // A dynamic import with a non-literal specifier can't be rewritten, even
+    // when the literal form would be reported
+    {
+      code: `const target = './components/Button';\nvoid import(target);\n`,
+      filename: FILE_INDEX,
+      settings: WILDCARD_SETTINGS,
+      options: [{ mode: 'always' }],
+    },
     // Relative import outside any alias path
     {
       code: `import { standalone } from '../standalone';\n`,

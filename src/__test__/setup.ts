@@ -118,7 +118,7 @@ function toMatchSpec<
       return {
         message: () =>
           `file path ${filePath} has the wrong number of barrelReexports.` +
-          `Expected ${expectedFileDetails.singleReexports.length.toString()}, received ${fileDetails.singleReexports.length.toString()}`,
+          `Expected ${expectedFileDetails.barrelReexports.length.toString()}, received ${fileDetails.barrelReexports.length.toString()}`,
         pass: false,
       };
     }
@@ -194,6 +194,7 @@ function toMatchSpec<
       'singleImports',
       'barrelImports',
       'dynamicImports',
+      'sideEffectImports',
       'singleReexports',
       'barrelReexports',
     ] as const) {
@@ -235,13 +236,29 @@ expect.extend({
       return result;
     }
 
-    // Strip ranges and circular references from importedBy, barrelImportedBy, and rootExportEntry
+    // Every cross-reference in analyzed info (an origin in importedBy /
+    // barrelImportedBy / externallyImportedBy, or a rootExportEntry) points at
+    // a live entry in another file, which itself holds ranges and more
+    // cross-references. Replace each with a shallow copy stripped of ranges
+    // and of its own cross-references, so expectations stay one level deep
+    // and the comparison can't recurse back through the import graph. The
+    // key set here is the one `StrippedOrigin` in util.ts omits.
+    function stripReference<T extends object>(reference: T): T {
+      const copy = { ...reference } as Record<string, unknown>;
+      delete copy.statementNodeRange;
+      delete copy.reportNodeRange;
+      delete copy.rootExportEntry;
+      delete copy.importedBy;
+      delete copy.barrelImportedBy;
+      delete copy.externallyImportedBy;
+      return copy as T;
+    }
     for (const [, fileDetails] of (analyzedPackageInfo as AnalyzedPackageInfo)
       .files) {
       if (fileDetails.fileType !== 'code') {
         continue;
       }
-      for (const exportEntry of [
+      for (const entry of [
         ...fileDetails.exports,
         ...fileDetails.singleReexports,
         ...fileDetails.barrelReexports,
@@ -250,57 +267,23 @@ expect.extend({
         ...fileDetails.dynamicImports,
         ...fileDetails.sideEffectImports,
       ]) {
-        if ('importedBy' in exportEntry) {
-          for (let i = 0; i < exportEntry.importedBy.length; i++) {
-            const importEntry = { ...exportEntry.importedBy[i].importEntry };
-            exportEntry.importedBy[i].importEntry = importEntry;
-            const partialImportEntry = importEntry as Partial<
-              typeof importEntry
-            >;
-            delete partialImportEntry.statementNodeRange;
-            delete partialImportEntry.reportNodeRange;
-            delete partialImportEntry.rootExportEntry;
+        if ('importedBy' in entry) {
+          for (const origin of entry.importedBy) {
+            origin.importEntry = stripReference(origin.importEntry);
           }
         }
-        if ('barrelImportedBy' in exportEntry) {
-          for (let i = 0; i < exportEntry.barrelImportedBy.length; i++) {
-            const importEntry = {
-              ...exportEntry.barrelImportedBy[i].importEntry,
-            };
-            exportEntry.barrelImportedBy[i].importEntry = importEntry;
-            const partialImportEntry = importEntry as Partial<
-              typeof importEntry
-            >;
-            delete partialImportEntry.statementNodeRange;
-            delete partialImportEntry.reportNodeRange;
+        if ('barrelImportedBy' in entry) {
+          for (const origin of entry.barrelImportedBy) {
+            origin.importEntry = stripReference(origin.importEntry);
           }
         }
-        if ('externallyImportedBy' in exportEntry) {
-          for (let i = 0; i < exportEntry.externallyImportedBy.length; i++) {
-            const importEntry = {
-              ...exportEntry.externallyImportedBy[i].importEntry,
-            };
-            exportEntry.externallyImportedBy[i].importEntry = importEntry;
-            const partialImportEntry = importEntry as Partial<
-              typeof importEntry
-            >;
-            delete partialImportEntry.statementNodeRange;
-            delete partialImportEntry.reportNodeRange;
+        if ('externallyImportedBy' in entry) {
+          for (const origin of entry.externallyImportedBy) {
+            origin.importEntry = stripReference(origin.importEntry);
           }
         }
-        if ('rootExportEntry' in exportEntry && exportEntry.rootExportEntry) {
-          const rootExportEntry = {
-            ...exportEntry.rootExportEntry,
-          };
-          exportEntry.rootExportEntry = rootExportEntry;
-          const partialRootExportEntry = rootExportEntry as Partial<
-            typeof rootExportEntry
-          >;
-          delete partialRootExportEntry.statementNodeRange;
-          delete partialRootExportEntry.reportNodeRange;
-          delete partialRootExportEntry.importedBy;
-          delete partialRootExportEntry.barrelImportedBy;
-          delete partialRootExportEntry.externallyImportedBy;
+        if ('rootExportEntry' in entry && entry.rootExportEntry) {
+          entry.rootExportEntry = stripReference(entry.rootExportEntry);
         }
       }
     }

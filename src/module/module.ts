@@ -8,15 +8,7 @@ import {
   getAllPackageSettings,
   type ParsedPackageSettings,
 } from '../settings/settings.js';
-import type {
-  AnalyzedBarrelImport,
-  AnalyzedBarrelReexport,
-  AnalyzedDynamicImport,
-  AnalyzedPackageInfo,
-  AnalyzedSideEffectImport,
-  AnalyzedSingleImport,
-  AnalyzedSingleReexport,
-} from '../types/analyzed.js';
+import type { AnalyzedPackageInfo } from '../types/analyzed.js';
 import type { BasePackageInfo } from '../types/base.js';
 import type { GenericContext } from '../types/context.js';
 import type { ResolvedPackageInfo } from '../types/resolved.js';
@@ -544,8 +536,16 @@ export function updateCacheForFile({
 
       return true;
     } else {
-      // Even if we don't need to update information we compute, we still need
-      // to update the AST nodes to take into account potentially changed locs
+      // Nothing we compute changed, but the statements may have moved, so the
+      // resolved and analyzed entries need the fresh ranges from the base
+      // entries. This must happen in place: phase 3 wires entries together by
+      // object reference (`importedBy[i].importEntry`, `rootExportEntry`), and
+      // rules correlate entries across files by identity, so replacing the
+      // objects would strand every reference on a stale copy.
+      //
+      // `hasFileChanged` only returns false when every statement is identical
+      // apart from ranges, and phase 2 keeps every base entry (see
+      // computeResolvedInfo), so the three arrays are index-aligned here.
       const baseFileInfo = basePackageInfo.files.get(filePath);
       const resolvedFileInfo = resolvedPackageInfo.files.get(filePath);
       const analyzedFileInfo = analyzedPackageInfo.files.get(filePath);
@@ -560,81 +560,19 @@ export function updateCacheForFile({
       ) {
         exitWithInternalError(`Could not get file info for "${filePath}"`);
       }
-      for (let i = 0; i < baseFileInfo.exports.length; i++) {
-        resolvedFileInfo.exports[i] = {
-          ...resolvedFileInfo.exports[i],
-          ...baseFileInfo.exports[i],
-        };
-        analyzedFileInfo.exports[i] = {
-          ...analyzedFileInfo.exports[i],
-          ...resolvedFileInfo.exports[i],
-        };
-      }
-
-      for (let i = 0; i < baseFileInfo.singleImports.length; i++) {
-        resolvedFileInfo.singleImports[i] = {
-          ...resolvedFileInfo.singleImports[i],
-          ...baseFileInfo.singleImports[i],
-        };
-        analyzedFileInfo.singleImports[i] = {
-          ...analyzedFileInfo.singleImports[i],
-          ...resolvedFileInfo.singleImports[i],
-        } as AnalyzedSingleImport;
-      }
-
-      for (let i = 0; i < baseFileInfo.barrelImports.length; i++) {
-        resolvedFileInfo.barrelImports[i] = {
-          ...resolvedFileInfo.barrelImports[i],
-          ...baseFileInfo.barrelImports[i],
-        };
-        analyzedFileInfo.barrelImports[i] = {
-          ...analyzedFileInfo.barrelImports[i],
-          ...resolvedFileInfo.barrelImports[i],
-        } as AnalyzedBarrelImport;
-      }
-
-      for (let i = 0; i < baseFileInfo.dynamicImports.length; i++) {
-        resolvedFileInfo.dynamicImports[i] = {
-          ...resolvedFileInfo.dynamicImports[i],
-          ...baseFileInfo.dynamicImports[i],
-        };
-        analyzedFileInfo.dynamicImports[i] = {
-          ...analyzedFileInfo.dynamicImports[i],
-          ...resolvedFileInfo.dynamicImports[i],
-        } as AnalyzedDynamicImport;
-      }
-
-      for (let i = 0; i < baseFileInfo.sideEffectImports.length; i++) {
-        resolvedFileInfo.sideEffectImports[i] = {
-          ...resolvedFileInfo.sideEffectImports[i],
-          ...baseFileInfo.sideEffectImports[i],
-        };
-        analyzedFileInfo.sideEffectImports[i] = {
-          ...analyzedFileInfo.sideEffectImports[i],
-          ...resolvedFileInfo.sideEffectImports[i],
-        } as AnalyzedSideEffectImport;
-      }
-
-      for (let i = 0; i < baseFileInfo.singleReexports.length; i++) {
-        resolvedFileInfo.singleReexports[i] = {
-          ...resolvedFileInfo.singleReexports[i],
-          ...baseFileInfo.singleReexports[i],
-        };
-        analyzedFileInfo.singleReexports[i] = {
-          ...analyzedFileInfo.singleReexports[i],
-          ...resolvedFileInfo.singleReexports[i],
-        } as AnalyzedSingleReexport;
-      }
-
-      for (let i = 0; i < baseFileInfo.barrelReexports.length; i++) {
-        resolvedFileInfo.barrelReexports[i] = {
-          ...resolvedFileInfo.barrelReexports[i],
-          ...baseFileInfo.barrelReexports[i],
-        };
-        analyzedFileInfo.barrelReexports[i] = {
-          ...analyzedFileInfo.barrelReexports[i],
-          ...resolvedFileInfo.barrelReexports[i],
-        } as AnalyzedBarrelReexport;
+      for (const key of [
+        'exports',
+        'singleImports',
+        'barrelImports',
+        'dynamicImports',
+        'sideEffectImports',
+        'singleReexports',
+        'barrelReexports',
+      ] as const) {
+        for (let i = 0; i < baseFileInfo[key].length; i++) {
+          Object.assign(resolvedFileInfo[key][i], baseFileInfo[key][i]);
+          Object.assign(analyzedFileInfo[key][i], baseFileInfo[key][i]);
+        }
       }
 
       return false;

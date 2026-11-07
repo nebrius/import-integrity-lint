@@ -8,7 +8,7 @@ Ensures that code does not barrel reexport external modules.
 
 In this rule, "external" means third-party packages and Node.js built-in modules. Barrel reexporting external code (e.g. `export * from 'react'` or `export * from 'node:path'`) is rarely necessary and can make code harder to read by obscuring which symbols a file is actually exposing.
 
-This rule also closes an edge case in the [`no-unresolved-imports`](../no-unresolved-imports#limitations) rule. Without it, downstream consumers can import unresolvable symbols through a barrel reexport without `no-unresolved-imports` catching them.
+This rule also closes two gaps in the [`no-unresolved-imports`](../no-unresolved-imports#limitations) rule at their source. Without it, members of an external module reexported as a namespace (`path.joins` through `export * as path from 'node:path'`) are never checked, and every name imported through a bare `export *` of an external module is reported as unresolved, including names the module does export.
 
 Barrel reexporting from first-party files within your package (`export * from './internal'`) is allowed.
 

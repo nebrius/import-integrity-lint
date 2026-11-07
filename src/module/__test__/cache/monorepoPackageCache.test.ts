@@ -132,6 +132,7 @@ const FILE_D_SINGLE_IMPORT = {
 // entry-point export of the target package's subpath file.
 const FILE_E_BARREL_IMPORT = {
   type: 'barrelImport' as const,
+  isTypeImport: false,
   importAlias: 'pkg',
   moduleSpecifier: '@test/package-one/a',
   resolvedModuleType: 'thirdParty' as const,
@@ -242,7 +243,24 @@ function buildExpectedFileA({
       })),
     ],
     singleReexports: [],
-    barrelReexports: [],
+    // The named barrel re-export is an entry-point export too, so e.ts's
+    // barrel import lights it up exactly like the exports above. b.ts has no
+    // exports of its own, so nothing is reachable through the namespace.
+    barrelReexports: [
+      {
+        type: 'barrelReexport',
+        isTypeReexport: false,
+        moduleSpecifier: './b',
+        exportName: 'ns',
+        isEntryPoint: true,
+        isExternallyImported: false,
+        resolvedModuleType: 'firstPartyCode',
+        resolvedModulePath: FILE_B,
+        importedBy: [],
+        barrelImportedBy: [],
+        externallyImportedBy: barrelOnlyExternallyImportedBy,
+      },
+    ],
   };
 }
 
@@ -486,6 +504,7 @@ it('Cross-package barrelImport populates externallyImportedBy on every entry-poi
       filePath: FILE_E,
       importEntry: {
         type: 'barrelImport',
+        isTypeImport: false,
         moduleSpecifier: '@test/package-one/a',
       },
     });
@@ -568,9 +587,10 @@ it('Updates packageTwo cache when a new file is added via updateCacheForFile', (
 it('Updates packageOne cache when an unused export is added to an existing file', () => {
   const { packageOneSettings } = initialize();
 
-  // Preserve both entry-point exports and add a new one
+  // Preserve the existing entry-point exports and add a new one
   const FILE_A_UPDATED_CONTENTS = `export type One = string;
 export type AlsoOne = number;
+export * as ns from './b';
 export type Another = string;
 `;
 
@@ -826,6 +846,14 @@ console.log(n);
   assertDefined(oneExport, 'One export missing on FILE_A');
   expect(oneExport.externallyImportedBy).toHaveLength(2);
   expectNoDuplicateExternalImporters(oneExport.externallyImportedBy);
+
+  // Re-export entries get externallyImportedBy pushes too, so phase 4 must
+  // reset them on recompute just like it resets exports, or every recompute
+  // appends a duplicate of the e.ts barrel importer.
+  const nsReexport = fileA.barrelReexports.find((e) => e.exportName === 'ns');
+  assertDefined(nsReexport, 'ns re-export missing on FILE_A');
+  expect(nsReexport.externallyImportedBy).toHaveLength(1);
+  expectNoDuplicateExternalImporters(nsReexport.externallyImportedBy);
 });
 
 it('Cache update on an existing file introduces a new cross-package singleImport', () => {
@@ -926,6 +954,11 @@ export type Two = AlsoOne;
   const oneExport = fileA.exports.find((e) => e.exportName === 'One');
   assertDefined(oneExport, 'One export missing on FILE_A');
   expectNoDuplicateExternalImporters(oneExport.externallyImportedBy);
+
+  const nsReexport = fileA.barrelReexports.find((e) => e.exportName === 'ns');
+  assertDefined(nsReexport, 'ns re-export missing on FILE_A');
+  expect(nsReexport.externallyImportedBy).toHaveLength(1);
+  expectNoDuplicateExternalImporters(nsReexport.externallyImportedBy);
 });
 
 it('Cache update removes an existing cross-package singleImport', () => {

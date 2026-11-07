@@ -143,7 +143,8 @@ export const preferAliasImports = createRule<
         importEntry;
 
       if (
-        !moduleSpecifier ||
+        // A dynamic import with a non-literal specifier has nothing to rewrite
+        moduleSpecifier === undefined ||
         (resolvedModuleType !== 'firstPartyCode' &&
           resolvedModuleType !== 'firstPartyOther')
       ) {

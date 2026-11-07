@@ -22,21 +22,6 @@ Ensures exports are imported elsewhere in the package.
 export const a = 10;
 ```
 
-```js
-/*
-.
-├── a.ts
-└── __test__/
-    └── b.ts
-*/
-
-// a.ts
-export const a = 10;
-
-// __test__/b.ts
-import { a } from '../a';
-```
-
 ### Correct
 
 ```js
@@ -82,9 +67,13 @@ import type { Foo } from '../a';
 
 ## Behavior
 
-### Test files don't count as usage
+### Test files count as usage
 
-Imports from test files don't count as usage for production exports. If a production file's only consumers are tests, the export is reported as unused. If you want to mark an export as deliberately test-only, use the [`_testOnly` prefix](../no-test-only-imports) instead. `no-test-only-imports` enforces that exports with that prefix are only imported by tests, so the marker stays accurate (similar to how `@ts-expect-error` in TypeScript verifies that the suppressed error actually exists, unlike `@ts-ignore`).
+An import from a test file satisfies this rule like any other import. If a production export's only consumers are tests, this rule stays quiet and [`no-test-only-imports`](../no-test-only-imports) reports it instead. To mark an export as deliberately test-only, use the `_testOnly` prefix; `no-test-only-imports` enforces that exports with that prefix are only imported by tests, so the marker stays accurate (similar to how `@ts-expect-error` in TypeScript verifies that the suppressed error actually exists, unlike `@ts-ignore`).
+
+### Namespace imports count as usage
+
+`import * as`, `import()`, and barrel re-exports in entry-point files count every export they can reach as used, since the rule can't see which members of the namespace object the code touches. See [Limitations](#barrel-imports) for what "can reach" means.
 
 ### Type imports count as usage
 
@@ -111,6 +100,8 @@ console.log(a.a1);
 ```
 
 In this example, `a2` is not used, but the rule can't determine that.
+
+Namespace membership is tracked precisely, so this only applies to exports that are genuinely members of the namespace: a re-export chain is followed by name (an `export { a1 } from './a'` inside a barrel exposes only `a1`), a bare `export *` never forwards a default export, and an `export *` that nothing imports through is itself reported as unused. Name shadowing is not modeled: when a barrel declares a local export with the same name as one it receives through `export *`, the shadowed export is still treated as reachable.
 
 ## Configuration
 

@@ -100,18 +100,30 @@ export type StrippedResolvedFileDetails = StrippedFileDetails<
   ResolvedBarrelReexport
 >;
 
-type StrippedAnalyzedSingleImport = Omit<
-  AnalyzedSingleImport,
-  'statementNodeRange' | 'reportNodeRange' | 'rootExportEntry'
+// An "origin" is the import/reexport entry recorded in an export's
+// importedBy, barrelImportedBy, or externallyImportedBy list.
+// toMatchAnalyzedSpec strips every origin down to a shallow object (no ranges,
+// no rootExportEntry, no lists of its own) so that expectations stay one level
+// deep and never recurse back through the import graph. These types are the
+// expectation-side mirror of that stripping, so the matcher and the types
+// always agree on what an origin contains.
+type StrippedOrigin<T> = Omit<
+  T,
+  | 'statementNodeRange'
+  | 'reportNodeRange'
+  | 'rootExportEntry'
+  | 'importedBy'
+  | 'barrelImportedBy'
+  | 'externallyImportedBy'
 >;
-type StrippedAnalyzedBarrelImport = Omit<
-  AnalyzedBarrelImport,
-  'statementNodeRange' | 'reportNodeRange' | 'rootExportEntry'
->;
-type StrippedAnalyzedSingleReexport = Omit<
-  AnalyzedSingleReexport,
-  'statementNodeRange' | 'reportNodeRange' | 'rootExportEntry'
->;
+type StrippedSingleOrigin =
+  | StrippedOrigin<AnalyzedSingleImport>
+  | StrippedOrigin<AnalyzedSingleReexport>;
+type StrippedAnyOrigin =
+  | StrippedSingleOrigin
+  | StrippedOrigin<AnalyzedBarrelImport>
+  | StrippedOrigin<AnalyzedBarrelReexport>
+  | StrippedOrigin<AnalyzedDynamicImport>;
 
 type StrippedAnalyzedExport = Omit<
   AnalyzedExport,
@@ -130,26 +142,21 @@ type StrippedAnalyzedBarrelReexport = Omit<
   | 'externallyImportedBy'
 >;
 
-type StrippedExportImportedBy = Array<{
+// importedBy origins are always single imports or entry-point single reexports
+// (the only statements that name a specific export); the other two lists can
+// hold any import/reexport kind.
+type StrippedImportedBy = Array<{
   filePath: string;
-  importEntry: StrippedAnalyzedSingleImport;
-}>;
-type StrippedReexportImportedBy = Array<{
-  filePath: string;
-  importEntry: StrippedAnalyzedSingleImport | StrippedAnalyzedSingleReexport;
+  importEntry: StrippedSingleOrigin;
 }>;
 type StrippedBarrelImportedBy = Array<{
   filePath: string;
-  importEntry: StrippedAnalyzedBarrelImport;
+  importEntry: StrippedAnyOrigin;
 }>;
 type StrippedExternallyImportedBy = Array<{
   packageRootDir: string;
   filePath: string;
-  importEntry:
-    | StrippedAnalyzedSingleImport
-    | StrippedAnalyzedSingleReexport
-    | StrippedAnalyzedBarrelImport
-    | StrippedAnalyzedBarrelReexport;
+  importEntry: StrippedAnyOrigin;
 }>;
 
 export type StrippedAnalyzedFileDetails = StrippedFileDetails<
@@ -165,7 +172,7 @@ export type StrippedAnalyzedFileDetails = StrippedFileDetails<
     AnalyzedExport,
     'importedBy' | 'barrelImportedBy' | 'externallyImportedBy'
   > & {
-    importedBy?: StrippedExportImportedBy;
+    importedBy?: StrippedImportedBy;
     barrelImportedBy?: StrippedBarrelImportedBy;
     externallyImportedBy?: StrippedExternallyImportedBy;
   },
@@ -176,7 +183,7 @@ export type StrippedAnalyzedFileDetails = StrippedFileDetails<
     | 'barrelImportedBy'
     | 'externallyImportedBy'
   > & {
-    importedBy?: StrippedReexportImportedBy;
+    importedBy?: StrippedImportedBy;
     barrelImportedBy?: StrippedBarrelImportedBy;
     externallyImportedBy?: StrippedExternallyImportedBy;
     rootExportEntry?: StrippedAnalyzedExport | StrippedAnalyzedBarrelReexport;
@@ -189,7 +196,7 @@ export type StrippedAnalyzedFileDetails = StrippedFileDetails<
     | 'externallyImportedBy'
   > & {
     rootExportEntry?: StrippedAnalyzedExport | StrippedAnalyzedBarrelReexport;
-    importedBy?: StrippedExportImportedBy;
+    importedBy?: StrippedImportedBy;
     barrelImportedBy?: StrippedBarrelImportedBy;
     externallyImportedBy?: StrippedExternallyImportedBy;
   }

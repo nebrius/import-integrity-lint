@@ -79,7 +79,7 @@ Not all imports participate in cycles. This rule considers:
 
 The following are intentionally excluded:
 
-- **Type imports and reexports** (`import type { X } from './a'`, `export type { X } from './a'`) — type-only imports are erased at compile time, so they can't participate in runtime cycles.
+- **Type imports and reexports** (`import type { X } from './a'`, `import type * as a from './a'`, `export type { X } from './a'`, `export type * from './a'`) — type-only imports are erased at compile time, so they can't participate in runtime cycles.
 - **Dynamic imports** (`import('./a')`) — dynamic imports are always safe in a cycle because they're guaranteed to execute after the importing file finishes loading.
 
 ### Self-imports

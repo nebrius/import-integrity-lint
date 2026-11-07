@@ -17,6 +17,15 @@ import {
   getRepoSettings,
   markSettingsForRefresh,
 } from '../settings/settings.js';
+import type {
+  BaseBarrelImport,
+  BaseBarrelReexport,
+  BaseDynamicImport,
+  BaseExport,
+  BaseSideEffectImport,
+  BaseSingleImport,
+  BaseSingleReexport,
+} from '../types/base.js';
 import type { GenericContext } from '../types/context.js';
 import { exitWithInternalError } from '../util/error.js';
 import {
@@ -237,4 +246,44 @@ export function isNonTestFile(filePath: string) {
     }
   }
   return true;
+}
+
+/**
+ * Whether an export name marks the export as test-only. `_testOnly`-prefixed
+ * exports live in production files but may only be imported by tests; see
+ * no-test-only-imports and no-test-imports-in-prod.
+ */
+export function isTestOnlyName(name: string) {
+  return name.startsWith('_testOnly');
+}
+
+/**
+ * Whether a statement is type-only (`import type`, `export type`, or an inline
+ * `type` modifier), and so erased at compile time. Each kind of statement names
+ * its flag differently and dynamic and side-effect imports have no type form,
+ * so rules ask here instead of checking whichever flag they remember.
+ */
+export function isTypeOnly(
+  entry:
+    | BaseSingleImport
+    | BaseBarrelImport
+    | BaseDynamicImport
+    | BaseSideEffectImport
+    | BaseExport
+    | BaseSingleReexport
+    | BaseBarrelReexport
+): boolean {
+  switch (entry.type) {
+    case 'singleImport':
+    case 'barrelImport':
+      return entry.isTypeImport;
+    case 'export':
+      return entry.isTypeExport;
+    case 'singleReexport':
+    case 'barrelReexport':
+      return entry.isTypeReexport;
+    case 'dynamicImport':
+    case 'sideEffectImport':
+      return false;
+  }
 }

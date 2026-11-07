@@ -152,6 +152,7 @@ it('Cross-package barrelImport populates externallyImportedBy on every entry-poi
     filePath: FILE_E,
     importEntry: {
       type: 'barrelImport',
+      isTypeImport: false,
       moduleSpecifier: '@test/package-a',
     },
   });
@@ -168,6 +169,7 @@ it('Named barrel reexport entry point tracks cross-package importer', () => {
   assertDefined(utilsExport, 'utils export missing on @test/package-d/d');
   expect(utilsExport).toMatchObject({
     type: 'barrelReexport',
+    isTypeReexport: false,
     exportName: 'utils',
     isEntryPoint: true,
     isExternallyImported: false,

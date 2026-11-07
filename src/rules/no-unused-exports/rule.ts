@@ -49,8 +49,12 @@ export const noUnusedExports = createRule({
         continue;
       }
 
-      // If imported by is empty, then this isn't used anywhere
-      if (exportEntry.importedBy.length === 0) {
+      // If nothing names this export and no namespace object contains it,
+      // then it isn't used anywhere
+      if (
+        exportEntry.importedBy.length === 0 &&
+        exportEntry.barrelImportedBy.length === 0
+      ) {
         context.report({
           messageId: 'noUnusedExports',
           loc: getLocFromRange(context, exportEntry.reportNodeRange),

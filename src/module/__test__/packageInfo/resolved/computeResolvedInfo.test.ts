@@ -138,12 +138,65 @@ const EXPECTED_FILE_A: StrippedResolvedFileDetails = {
       resolvedModuleType: 'firstPartyCode',
       resolvedModulePath: FILE_B,
     },
+    {
+      // A fixed alias names its target file outright. This one points into a
+      // dot-folder, which is ignored by default, so the file is not one the
+      // plugin analyzes: it must resolve to nothing, not to code that phase 3
+      // then can't find.
+      type: 'singleImport',
+      importAlias: 'h',
+      importName: 'h',
+      isTypeImport: false,
+      moduleSpecifier: '@hidden',
+      resolvedModuleType: 'firstPartyOther',
+      resolvedModulePath: undefined,
+    },
   ],
-  barrelImports: [],
+  // Type-only namespace imports and star re-exports resolve to the declaration
+  // file beside a JS file, the same as type-only named imports do
+  barrelImports: [
+    {
+      type: 'barrelImport',
+      importAlias: 'dTypes',
+      isTypeImport: true,
+      moduleSpecifier: './two/d',
+      resolvedModuleType: 'firstPartyCode',
+      resolvedModulePath: FILE_D_DECLARATION,
+    },
+    {
+      type: 'barrelImport',
+      importAlias: 'dValues',
+      isTypeImport: false,
+      moduleSpecifier: './two/d',
+      resolvedModuleType: 'firstPartyCode',
+      resolvedModulePath: FILE_D,
+    },
+  ],
   dynamicImports: [],
   sideEffectImports: [],
   singleReexports: [],
-  barrelReexports: [],
+  barrelReexports: [
+    {
+      type: 'barrelReexport',
+      exportName: undefined,
+      isTypeReexport: true,
+      isEntryPoint: false,
+      isExternallyImported: false,
+      moduleSpecifier: './two/f',
+      resolvedModuleType: 'firstPartyCode',
+      resolvedModulePath: FILE_F_DECLARATION,
+    },
+    {
+      type: 'barrelReexport',
+      exportName: undefined,
+      isTypeReexport: false,
+      isEntryPoint: false,
+      isExternallyImported: false,
+      moduleSpecifier: './two/f',
+      resolvedModuleType: 'firstPartyCode',
+      resolvedModulePath: FILE_F,
+    },
+  ],
 };
 
 const EXPECTED_FILE_INDEX: StrippedResolvedFileDetails = {
@@ -361,7 +414,11 @@ function makeBaseInfo() {
     packageName: 'test',
     // This takes in the already formatted version, hence why we join() here
     wildcardAliases: { '@/': TEST_PACKAGE_DIR },
-    fixedAliases: { '@alias': join(TEST_PACKAGE_DIR, 'one/b.ts') },
+    fixedAliases: {
+      '@alias': join(TEST_PACKAGE_DIR, 'one/b.ts'),
+      // Points at a file in a default-ignored dot-folder
+      '@hidden': join(TEST_PACKAGE_DIR, '.hidden/h.ts'),
+    },
     ignorePatterns: [],
     ignoreOverridePatterns: [],
     defaultIgnoreOverrides: [],
@@ -478,6 +535,87 @@ it('Adds and updates resolved info for files', () => {
     },
     [NEW_JSON_PATH]: {
       fileType: 'other',
+    },
+  });
+});
+
+it('Gives every import a resolved entry, including empty and non-literal specifiers', () => {
+  const baseInfo = makeBaseInfo();
+  const resolvedInfo = computeResolvedInfo(baseInfo);
+
+  // Every base entry must get a resolved counterpart so that the three phases
+  // stay index-aligned; the range-only cache patch in module.ts depends on
+  // that alignment. An empty specifier (what an editor leaves behind after
+  // auto-closing the quotes) is an ordinary unknown module. A dynamic import
+  // with a non-literal specifier can't be resolved at all and lands in the
+  // "could not resolve" bucket.
+  addBaseInfoForFile(
+    {
+      filePath: NEW_FILE_PATH,
+      fileContents: `import { x } from '';
+import * as y from '';
+import '';
+const target = './one/b';
+async function load() {
+  return [await import(''), await import(target)];
+}
+console.log(x, y, load);`,
+      getEntryPointSpecifier: () => undefined,
+      isExternallyImportedCheck: () => false,
+    },
+    baseInfo
+  );
+  computeFolderTree(baseInfo);
+  addResolvedInfoForFile(NEW_FILE_PATH, baseInfo, resolvedInfo);
+
+  expect(resolvedInfo).toMatchResolvedSpec({
+    ...EXPECTED,
+    [NEW_FILE_PATH]: {
+      fileType: 'code',
+      entryPointSpecifier: undefined,
+      isExternallyImported: false,
+      exports: [],
+      singleImports: [
+        {
+          type: 'singleImport',
+          importAlias: 'x',
+          importName: 'x',
+          isTypeImport: false,
+          moduleSpecifier: '',
+          resolvedModuleType: 'thirdParty',
+        },
+      ],
+      barrelImports: [
+        {
+          type: 'barrelImport',
+          isTypeImport: false,
+          importAlias: 'y',
+          moduleSpecifier: '',
+          resolvedModuleType: 'thirdParty',
+        },
+      ],
+      dynamicImports: [
+        {
+          type: 'dynamicImport',
+          moduleSpecifier: '',
+          resolvedModuleType: 'thirdParty',
+        },
+        {
+          type: 'dynamicImport',
+          moduleSpecifier: undefined,
+          resolvedModuleType: 'firstPartyOther',
+          resolvedModulePath: undefined,
+        },
+      ],
+      sideEffectImports: [
+        {
+          type: 'sideEffectImport',
+          moduleSpecifier: '',
+          resolvedModuleType: 'thirdParty',
+        },
+      ],
+      singleReexports: [],
+      barrelReexports: [],
     },
   });
 });

@@ -30,6 +30,18 @@ ruleTester.run('require-node-prefix', requireNodePrefix, {
         },
       },
     },
+    // A dynamic import with a non-literal specifier can't be checked, even
+    // when the variable happens to hold a builtin name.
+    {
+      code: `const target = 'fs';\nvoid import(target);`,
+      filename: FILE_A,
+      settings: {
+        'import-integrity': {
+          packageRootDir: TEST_PACKAGE_DIR,
+          mode: 'fix',
+        },
+      },
+    },
   ],
 
   invalid: [

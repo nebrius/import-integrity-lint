@@ -13,6 +13,25 @@ const FILE_D_DTS = join(TEST_PACKAGE_DIR, 'd.d.ts');
 const FILE_E = join(TEST_PACKAGE_DIR, 'e.ts');
 const FILE_G = join(TEST_PACKAGE_DIR, 'g.ts');
 const FILE_H = join(TEST_PACKAGE_DIR, 'h.ts');
+const FILE_STAR_IMPL = join(TEST_PACKAGE_DIR, 'star-impl.ts');
+const FILE_NS_IMPL = join(TEST_PACKAGE_DIR, 'ns-impl.ts');
+const FILE_BARREL_IMPL = join(TEST_PACKAGE_DIR, 'barrel-impl.ts');
+const FILE_CHAIN_MID = join(TEST_PACKAGE_DIR, 'chain-mid.ts');
+const FILE_CHAIN_IMPL = join(TEST_PACKAGE_DIR, 'chain-impl.ts');
+const FILE_K = join(TEST_PACKAGE_DIR, 'k.ts');
+const FILE_KSTAR = join(TEST_PACKAGE_DIR, 'kstar.ts');
+const FILE_KNS = join(TEST_PACKAGE_DIR, 'kns.ts');
+const FILE_M = join(TEST_PACKAGE_DIR, 'm.ts');
+
+// The four barrel shapes from issue #48: production reaches each `*-impl`
+// export only through an entry-point barrel re-export or an `import * as`,
+// while a test imports it directly.
+const BARREL_ENTRY_POINTS = {
+  './star': './star.ts',
+  './ns': './ns.ts',
+  './named': './named.ts',
+  './chain': './chain.ts',
+};
 
 const ruleTester = new RuleTester({
   languageOptions: {
@@ -25,6 +44,11 @@ const ruleTester = new RuleTester({
           'test/*.ts*',
           'tests/*.ts*',
         ],
+        // Each case lints a different fixture file so the barrel shapes stay
+        // isolated; the tester's default cap of 8 distinct files is a
+        // performance heuristic for real projects, not a limit that matters
+        // for a fixture this small.
+        maximumDefaultProjectFileMatchCount_THIS_WILL_SLOW_DOWN_LINTING: 32,
       },
       tsconfigRootDir: TEST_PACKAGE_DIR,
     },
@@ -115,6 +139,79 @@ export const a2 = 10;
         },
       },
     },
+    // star.ts (entry point) does `export * from './star-impl'`
+    {
+      code: readFileSync(FILE_STAR_IMPL, 'utf8'),
+      filename: FILE_STAR_IMPL,
+      settings: {
+        'import-integrity': {
+          packageRootDir: TEST_PACKAGE_DIR,
+          mode: 'fix',
+          entryPointFiles: BARREL_ENTRY_POINTS,
+        },
+      },
+    },
+    // ns.ts (entry point) does `export * as ns from './ns-impl'`
+    {
+      code: readFileSync(FILE_NS_IMPL, 'utf8'),
+      filename: FILE_NS_IMPL,
+      settings: {
+        'import-integrity': {
+          packageRootDir: TEST_PACKAGE_DIR,
+          mode: 'fix',
+          entryPointFiles: BARREL_ENTRY_POINTS,
+        },
+      },
+    },
+    // consumer.ts (production) does `import * as b from './barrel-impl'`
+    {
+      code: readFileSync(FILE_BARREL_IMPL, 'utf8'),
+      filename: FILE_BARREL_IMPL,
+      settings: {
+        'import-integrity': {
+          packageRootDir: TEST_PACKAGE_DIR,
+          mode: 'fix',
+          entryPointFiles: BARREL_ENTRY_POINTS,
+        },
+      },
+    },
+    // chain.ts (entry point) does `export * from './chain-mid'`, which lands
+    // on chain-mid's `export { chainFn } from './chain-impl'`
+    {
+      code: readFileSync(FILE_CHAIN_MID, 'utf8'),
+      filename: FILE_CHAIN_MID,
+      settings: {
+        'import-integrity': {
+          packageRootDir: TEST_PACKAGE_DIR,
+          mode: 'fix',
+          entryPointFiles: BARREL_ENTRY_POINTS,
+        },
+      },
+    },
+    // k.ts re-exports a type that is only imported by a test file. Type
+    // re-exports are exempt just like type exports.
+    {
+      code: readFileSync(FILE_K, 'utf8'),
+      filename: FILE_K,
+      settings: {
+        'import-integrity': {
+          packageRootDir: TEST_PACKAGE_DIR,
+          mode: 'fix',
+        },
+      },
+    },
+    // kstar.ts (`export type *`) and kns.ts (`export type * as`) are only
+    // imported through by a test file. Type barrel re-exports are exempt too.
+    ...[FILE_KSTAR, FILE_KNS].map((filename) => ({
+      code: readFileSync(filename, 'utf8'),
+      filename,
+      settings: {
+        'import-integrity': {
+          packageRootDir: TEST_PACKAGE_DIR,
+          mode: 'fix',
+        },
+      },
+    })),
   ],
 
   invalid: [
@@ -172,6 +269,38 @@ export const a6 = 10;
 `,
       filename: FILE_A,
       errors: [{ messageId: 'noTestOnlyImports' }],
+      settings: {
+        'import-integrity': {
+          packageRootDir: TEST_PACKAGE_DIR,
+          mode: 'fix',
+        },
+      },
+    },
+    // chain-impl.ts: chainFn is reached by production through the chain.ts
+    // barrel, but chainOther is not re-exported by chain-mid.ts, so the
+    // production barrel never exposes it. Only the test imports it. Barrel
+    // reachability must be tracked by name, not by whole file, or this would
+    // be missed.
+    {
+      code: readFileSync(FILE_CHAIN_IMPL, 'utf8'),
+      filename: FILE_CHAIN_IMPL,
+      errors: [
+        { messageId: 'noTestOnlyImports', data: { name: 'chainOther' } },
+      ],
+      settings: {
+        'import-integrity': {
+          packageRootDir: TEST_PACKAGE_DIR,
+          mode: 'fix',
+          entryPointFiles: BARREL_ENTRY_POINTS,
+        },
+      },
+    },
+    // m.ts is reached only by a test file's `import * as m`. A namespace
+    // import from a test is still a test-only import.
+    {
+      code: readFileSync(FILE_M, 'utf8'),
+      filename: FILE_M,
+      errors: [{ messageId: 'noTestOnlyImports', data: { name: 'mFn' } }],
       settings: {
         'import-integrity': {
           packageRootDir: TEST_PACKAGE_DIR,

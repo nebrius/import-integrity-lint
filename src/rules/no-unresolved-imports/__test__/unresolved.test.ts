@@ -54,6 +54,18 @@ ruleTester.run('no-unresolved-exports', noUnresolvedImports, {
         },
       },
     },
+    // Only @types/react is listed, which is enough for a type-only namespace
+    // import just as it is for a type-only named import
+    {
+      code: `import type * as React from 'react'`,
+      filename: FILE_A,
+      settings: {
+        'import-integrity': {
+          monorepoRootDir: MONOREPO_ROOT_DIR,
+          mode: 'fix',
+        },
+      },
+    },
     {
       code: `export * from 'type-fest'`,
       filename: FILE_A,
@@ -137,6 +149,124 @@ ruleTester.run('no-unresolved-exports', noUnresolvedImports, {
         },
       },
     },
+    {
+      // e.ts is `export { default as data } from './data.json'`: a single
+      // re-export whose target is a non-code file still resolves.
+      code: `import { data } from './e'`,
+      filename: FILE_A,
+      settings: {
+        'import-integrity': {
+          monorepoRootDir: MONOREPO_ROOT_DIR,
+          mode: 'fix',
+        },
+      },
+    },
+    {
+      // A dynamic import with a non-literal specifier can't be checked
+      // statically. It is recorded, but not reported.
+      code: `const target = './b';
+async function load() {
+  return import(target);
+}
+console.log(load);`,
+      filename: FILE_A,
+      settings: {
+        'import-integrity': {
+          monorepoRootDir: MONOREPO_ROOT_DIR,
+          mode: 'fix',
+        },
+      },
+    },
+    {
+      // Namespace and dynamic imports of a non-code file resolve to that file,
+      // and there is nothing inside a non-code file to check.
+      code: `import * as data from './data.json';
+async function load() {
+  return import('./data.json');
+}
+console.log(data, load);`,
+      filename: FILE_A,
+      settings: {
+        'import-integrity': {
+          monorepoRootDir: MONOREPO_ROOT_DIR,
+          mode: 'fix',
+        },
+      },
+    },
+    {
+      code: `export * as data from './data.json'`,
+      filename: FILE_A,
+      settings: {
+        'import-integrity': {
+          monorepoRootDir: MONOREPO_ROOT_DIR,
+          mode: 'fix',
+        },
+      },
+    },
+    {
+      // A named or side effect import of a non-code file resolves to that
+      // file. There is no symbol to check in a non-code file, so that is the
+      // end of it.
+      code: `import data from './data.json';
+import './data.json';
+console.log(data);`,
+      filename: FILE_A,
+      settings: {
+        'import-integrity': {
+          monorepoRootDir: MONOREPO_ROOT_DIR,
+          mode: 'fix',
+        },
+      },
+    },
+    {
+      // Whether a module specifier points at a file at all is left to
+      // TypeScript and bundlers, which already report it for every one of
+      // these shapes. The plugin only knows the files it analyzes, so it could
+      // not tell a missing file from an ignored one such as build output.
+      // These statements are recorded and never reported.
+      code: `import { x } from './unknown';
+import * as y from './unknown';
+import './unknown';
+async function load() {
+  return import('./unknown');
+}
+console.log(x, y, load);`,
+      filename: FILE_A,
+      settings: {
+        'import-integrity': {
+          monorepoRootDir: MONOREPO_ROOT_DIR,
+          mode: 'fix',
+        },
+      },
+    },
+    {
+      code: `export { x } from './unknown';
+export * from './unknown';`,
+      filename: FILE_A,
+      settings: {
+        'import-integrity': {
+          monorepoRootDir: MONOREPO_ROOT_DIR,
+          mode: 'fix',
+        },
+      },
+    },
+    {
+      // h.ts is `export { h } from './missing'`, i.ts is
+      // `export * as i from './missing'`, and j.ts is
+      // `export * from './missing'`. A file the plugin can't see is just as
+      // unknowable one re-export away, so these aren't reported either.
+      code: `import { h } from './h';
+import { i } from './i';
+import { j } from './j';
+console.log(h, i, j);`,
+      filename: FILE_A,
+      settings: {
+        'import-integrity': {
+          monorepoRootDir: MONOREPO_ROOT_DIR,
+          mode: 'fix',
+        },
+      },
+    },
   ],
 
   invalid: [
@@ -186,11 +316,11 @@ ruleTester.run('no-unresolved-exports', noUnresolvedImports, {
     },
     {
       // packages/two is still linted even without a package-local config
-      // file, so unresolved specifiers from that workspace package must
-      // still report.
-      code: `export * from './unknown'`,
+      // file, so a third-party specifier missing from that workspace package's
+      // package.json must still report.
+      code: `import React from 'react'`,
       filename: FILE_D,
-      errors: [{ messageId: 'noUnresolvedImports' }],
+      errors: [{ messageId: 'noTransientDependencies' }],
       settings: {
         'import-integrity': {
           monorepoRootDir: MONOREPO_ROOT_DIR,
@@ -199,7 +329,9 @@ ruleTester.run('no-unresolved-exports', noUnresolvedImports, {
       },
     },
     {
-      code: `import * as unknown from './unknown'`,
+      // f.ts is `export * from './g'` and g.ts only has a default export.
+      // `export *` never forwards `default`, so this cannot resolve.
+      code: `import def from './f'`,
       filename: FILE_A,
       errors: [{ messageId: 'noUnresolvedImports' }],
       settings: {
@@ -210,9 +342,22 @@ ruleTester.run('no-unresolved-exports', noUnresolvedImports, {
       },
     },
     {
-      code: `export * from './unknown'`,
+      // An empty specifier (what an editor leaves after auto-closing quotes)
+      // is reported as such, not skipped and not called an unknown package.
+      code: `import { x } from ''`,
       filename: FILE_A,
-      errors: [{ messageId: 'noUnresolvedImports' }],
+      errors: [{ messageId: 'emptyModuleSpecifier' }],
+      settings: {
+        'import-integrity': {
+          monorepoRootDir: MONOREPO_ROOT_DIR,
+          mode: 'fix',
+        },
+      },
+    },
+    {
+      code: `export { x } from ''`,
+      filename: FILE_A,
+      errors: [{ messageId: 'emptyModuleSpecifier' }],
       settings: {
         'import-integrity': {
           monorepoRootDir: MONOREPO_ROOT_DIR,

@@ -1,5 +1,22 @@
+import type {
+  AnalyzedBarrelImport,
+  AnalyzedBarrelReexport,
+  AnalyzedDynamicImport,
+  AnalyzedSideEffectImport,
+  AnalyzedSingleImport,
+  AnalyzedSingleReexport,
+} from '../../types/analyzed.js';
 import { exitWithInternalError } from '../../util/error.js';
 import { createRule, getESMInfo, getLocFromRange } from '../util.js';
+
+// Every statement that carries a module specifier
+type Statement =
+  | AnalyzedSingleImport
+  | AnalyzedBarrelImport
+  | AnalyzedDynamicImport
+  | AnalyzedSideEffectImport
+  | AnalyzedSingleReexport
+  | AnalyzedBarrelReexport;
 
 export const noUnresolvedImports = createRule({
   name: 'no-unresolved-imports',
@@ -15,6 +32,7 @@ export const noUnresolvedImports = createRule({
         'Import "{{name}}" does not point to a valid first party export',
       noTransientDependencies:
         'Third party module specifier "{{specifier}}" is not listed in package.json.',
+      emptyModuleSpecifier: 'Module specifier is empty',
     },
   },
   defaultOptions: [],
@@ -34,6 +52,29 @@ export const noUnresolvedImports = createRule({
       return {};
     }
 
+    // Whether a module specifier points at a file at all is deliberately not
+    // checked here. TypeScript and bundlers already report that for every
+    // statement shape, and this plugin only knows the files it analyzes, so it
+    // could not tell a missing file from an ignored one such as build output.
+    // The checks below are the ones nothing else does: a third party specifier
+    // must be listed in package.json, and a named import or entry point
+    // re-export of first party code must land on an export that exists.
+
+    // An empty specifier is what an editor leaves behind after auto-closing
+    // the quotes. It resolves as an unknown bare specifier, but calling it a
+    // missing package.json entry would send people the wrong way, so it gets
+    // its own message and no further checks.
+    function reportEmptySpecifier(entry: Statement): boolean {
+      if (entry.moduleSpecifier !== '') {
+        return false;
+      }
+      context.report({
+        messageId: 'emptyModuleSpecifier',
+        loc: getLocFromRange(context, entry.statementNodeRange),
+      });
+      return true;
+    }
+
     // First check imports
     outer: for (const importEntry of [
       ...fileInfo.singleImports,
@@ -41,6 +82,10 @@ export const noUnresolvedImports = createRule({
       ...fileInfo.dynamicImports,
       ...fileInfo.sideEffectImports,
     ]) {
+      if (reportEmptySpecifier(importEntry)) {
+        continue;
+      }
+
       // First, check if this is a third party dependency, and ensure that the dependency is listed
       // in a package.json
       if (importEntry.resolvedModuleType === 'thirdParty') {
@@ -65,7 +110,10 @@ export const noUnresolvedImports = createRule({
                 importEntry.moduleSpecifier === dep ||
                 // Check if this is a type import for a dep from DefinitelyTyped
                 // just in case someone is only using type imports w/o the
-                // implementation package installed
+                // implementation package installed. This checks the flag
+                // directly instead of calling `isTypeOnly`, because the `in`
+                // check also rules out dynamic imports, whose specifier can be
+                // undefined.
                 ('isTypeImport' in importEntry &&
                   importEntry.isTypeImport &&
                   `@types/${importEntry.moduleSpecifier}` === dep) ||
@@ -96,28 +144,11 @@ export const noUnresolvedImports = createRule({
         continue;
       }
 
-      // Barrel/dynamic imports don't resolve to a single export, and can be
-      // spread across multiple files even. The specific items being imported
-      // isn't specified either in non-first party code, meaning the only way to
-      // know if an import is valid is to introspect how it's used at runtime.
-      // This isn't tractable, so we only validate that the module specifier
-      // could be resolved. If the module couldn't be resolved, we mark the file
-      // type as first party other, so we first have to check for that.
-      if (
-        importEntry.resolvedModuleType === 'firstPartyOther' &&
-        importEntry.type === 'barrelImport'
-      ) {
-        context.report({
-          loc: getLocFromRange(context, importEntry.reportNodeRange),
-          messageId: 'noUnresolvedImports',
-          data: {
-            name: importEntry.importAlias,
-          },
-        });
-      }
-
-      // Next, we check if the root export could be resolved, which is only
-      // available for single imports
+      // Barrel, dynamic, and side effect imports name no symbol: the whole
+      // module is bound to one namespace object (or to nothing), and the only
+      // way to know whether a member exists is to follow how that object is
+      // used at runtime, which isn't tractable. A single import names a symbol,
+      // so check that its root export could be resolved.
       if (
         importEntry.resolvedModuleType === 'firstPartyCode' &&
         importEntry.type === 'singleImport' &&
@@ -138,24 +169,12 @@ export const noUnresolvedImports = createRule({
       ...fileInfo.singleReexports,
       ...fileInfo.barrelReexports,
     ]) {
-      // First check if we couldn't resolve the module specifier. If the module
-      // couldn't be resolved, we mark the file type as first party other, so
-      // we first have to check for that.
-      if (
-        reexportEntry.resolvedModuleType === 'firstPartyOther' &&
-        reexportEntry.type === 'barrelReexport'
-      ) {
-        context.report({
-          loc: getLocFromRange(context, reexportEntry.reportNodeRange),
-          messageId: 'noUnresolvedImports',
-          data: {
-            name: reexportEntry.exportName,
-          },
-        });
+      if (reportEmptySpecifier(reexportEntry)) {
+        continue;
       }
 
-      // Next, we check if the root export could be resolved, which is only
-      // available for single reexports if they are entry points
+      // Check if the root export could be resolved, which is only available for
+      // single reexports, and only traced when they are entry points
       if (
         reexportEntry.resolvedModuleType === 'firstPartyCode' &&
         reexportEntry.type === 'singleReexport' &&

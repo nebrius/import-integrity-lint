@@ -14,7 +14,7 @@ Second, it nudges tests toward testing public API surfaces rather than internal 
 
 There are cases where you genuinely need to expose something for tests, such as a test reset helper or an internal-only function whose direct testing improves coverage. For those cases, prefix the export name with `_testOnly`. This rule enforces that `_testOnly`-prefixed exports are only imported by tests, so the marker stays accurate (similar to how `@ts-expect-error` in TypeScript verifies that the suppressed error actually exists, unlike `@ts-ignore`).
 
-Type exports are also exempted, since they can help surface issues in tests and have no runtime cost.
+Type exports and type re-exports (`export type { X } from './x'`, `export type * from './x'`) are also exempted, since they can help surface issues in tests and have no runtime cost.
 
 This rule pairs with [`no-test-imports-in-prod`](../no-test-imports-in-prod), which enforces the inverse: that production code doesn't import test files or `_testOnly`-prefixed symbols.
 
@@ -103,10 +103,10 @@ Type exports are exempted.
 An export is flagged by this rule if all of the following are true:
 
 1. The export is in a non-test file
-2. The export is not a type export
+2. The export is not a type export or type re-export
 3. The export is not in an [entry-point file](../../configuration/package-level-options#entrypointfiles) or [externally imported file](../../configuration/package-level-options#externallyimportedfiles)
-4. The export is imported by at least one file
-5. The export is imported only by test files, and the export name is not prefixed with `_testOnly`
+4. The export is imported by at least one file, either directly by name or as a member of a namespace object (`import * as`, `import()`, or a barrel re-export in an entry-point file)
+5. Every file that imports it, directly or through a namespace, is a test file, and the export name is not prefixed with `_testOnly`
 
 A file is considered a test file based on filename and folder conventions (e.g. `.test.`, `.spec`, `__test__`). The full list of patterns, and how to add your own, is on the [`testFilePatterns`](../../configuration/package-level-options#testfilepatterns) page.
 
@@ -131,6 +131,8 @@ console.log(a.a1);
 ```
 
 In this example, `a2` may be imported only by tests, but the rule can't determine that.
+
+Namespace membership is tracked precisely, so this only applies to exports that are genuinely members of the namespace: a re-export chain is followed by name (an `export { a1 } from './a'` inside a barrel exposes only `a1`), and a bare `export *` never forwards a default export. Name shadowing is not modeled: when a barrel declares a local export with the same name as one it receives through `export *`, the shadowed export is still treated as reachable.
 
 ## Configuration
 

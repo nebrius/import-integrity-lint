@@ -29,12 +29,12 @@ intended — the fix belongs in the code, not in making the report disappear.
 ## Hard rules
 
 1. Never convert a static import to a dynamic `await import(...)` to silence a
-   violation. Within a package, dynamic imports don't count as usage at all,
-   so the conversion can create new unused-export violations; across packages
-   in a monorepo, a dynamic import marks every export of the target file as
-   used, masking future dead code. The one place a lazy `import()` is a
-   documented fix is no-cycle (see that entry). Otherwise use dynamic imports
-   only when runtime lazy/conditional loading is genuinely required.
+   violation. A dynamic import yields the whole namespace, so it marks every
+   export it can reach as used, within a package and across packages alike,
+   masking future dead code; and a dynamic import whose specifier is not a
+   string literal cannot be analyzed at all. The one place a lazy `import()`
+   is a documented fix is no-cycle (see that entry). Otherwise use dynamic
+   imports only when runtime lazy/conditional loading is genuinely required.
 2. Never add an artificial import whose only purpose is to make an export look
    used. An artificial test import just converts the violation into a
    no-test-only-imports violation, and a production import added to appease
@@ -64,7 +64,7 @@ entry-point export unused across the monorepo).
 
 Nothing in the package imports this export at all — if only tests imported
 it, you'd see no-test-only-imports instead. Type-only imports count as usage.
-Four causes with different fixes — check `git diff`/`git log` first to see
+Five causes with different fixes — check `git diff`/`git log` first to see
 whether the export or its intended consumer is new, before deleting anything:
 
 - Dead code: remove the `export` keyword, or the whole declaration if nothing
@@ -76,19 +76,38 @@ whether the export or its intended consumer is new, before deleting anything:
   which declares a test-only export the rules understand.
 - Genuinely public API, or a file a framework consumes: a human decision —
   see the last section.
+- `Export "<unnamed>"` on an `export * from` a builtin or npm package, with
+  names imported through it: they are used, but the plugin can't see them
+  through the `export *`. Re-export the names explicitly, as for
+  no-external-barrel-reexports below; don't delete the statement.
 
 ### `Import "{{name}}" does not point to a valid first party export` (no-unresolved-imports)
 
-The module path or the imported symbol doesn't resolve — a typo, a moved or
-deleted file, or a renamed/removed export. Fix the specifier or import the
-symbol that actually exists; if the export was removed but is still needed,
-restore it.
+The module resolves but the imported symbol doesn't — a renamed or removed
+export, a re-export further down the chain that names an export its target
+doesn't have, or a default import of a module that only has `export *` (which
+never forwards `default`). Import the symbol that actually exists; if the
+export was removed but is still needed, restore it. A module path that is
+itself wrong, here or in a re-export along the way, is not reported by this
+rule; TypeScript or the bundler will say so.
+
+One exception: a name that reaches a builtin or npm package only through a
+bare `export *` (`export * from 'node:path'` in the barrel) is reported even
+when the package exports it, because the plugin can't see inside the package.
+Don't delete the import or add a stub export. Import the name from the package
+directly, or replace the `export *` with explicit re-exports, as for
+no-external-barrel-reexports below.
 
 ### `Third party module specifier "{{specifier}}" is not listed in package.json.` (no-unresolved-imports)
 
 The importing package's own `package.json` doesn't declare this dependency —
 the import only works via hoisting or a transient dependency. Add it to the
 correct `package.json` (`dependencies` or `devDependencies`) and install.
+
+### `Module specifier is empty` (no-unresolved-imports)
+
+The statement's module specifier is `''`, usually an unfinished edit. Fill in
+the intended module, or delete the statement if it isn't needed.
 
 ### `Imports/reexports cannot form a cycle: ...` (no-cycle)
 
@@ -99,8 +118,8 @@ types, converting it to `import type` is a legitimate fix (type-only imports
 are erased at runtime and don't count). Making an edge lazy via `import()`
 also genuinely resolves the hazard (dynamic imports run after module loading
 completes, so they can't deadlock) and is a documented fix — but prefer the
-structural fixes, since a dynamic import no longer counts as usage of the
-target's exports (hard rule 1).
+structural fixes, since a dynamic import marks every export of the target as
+used and so masks future dead code there (hard rule 1).
 
 ### `Export "{{name}}" must be imported by non-test files` (no-test-only-imports)
 
@@ -116,6 +135,28 @@ symbol. The boundary is one-directional: tests may import production code;
 production must never import test code. Move the needed logic out of the test
 file into a production module (imported from both sides), or remove the
 import.
+
+### `Import exposes test-only export "{{name}}" to production code` (no-test-imports-in-prod)
+
+A production file imports a namespace (`import * as`, `import()`, or a named
+import that resolves to an `export * as`) or a renamed re-export that reaches
+a `_testOnly`-prefixed export, even though nothing names it. Replace the
+namespace import with named imports of the production symbols actually used.
+If the namespace is only used in type positions, `import type * as` is also a
+fix, since type-only imports are erased and not checked. If the `_testOnly`
+export is the only reason the namespace is imported, the import belongs in a
+test file.
+
+### `Re-export exposes test-only export "{{name}}" outside the package` (no-test-imports-in-prod)
+
+An entry point (or externally imported file) re-exports something that reaches
+a `_testOnly`-prefixed export: `export *` from a module that has one,
+`export * as` of such a module, or a named re-export chain that ends at one.
+That makes the helper part of the package's public API. For `export *`,
+replace it with named re-exports of the production symbols. For `export * as`
+or a named chain, move the `_testOnly` helper out of the re-exported module
+into a test utility file so the entry point never reaches it. Don't drop the
+`_testOnly` prefix to silence this; the helper is still test code.
 
 ### `Use alias import ...` / `Use relative import ...` (prefer-alias-imports)
 

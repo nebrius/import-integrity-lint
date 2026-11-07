@@ -364,6 +364,7 @@ function computeFileDetails({
           statementNodeRange,
           reportNodeRange,
           moduleSpecifier,
+          isTypeImport: entry.isType,
         });
       } else {
         const importName =
@@ -408,23 +409,29 @@ function computeFileDetails({
       });
     }
 
-    // Check if it's a string literal. If not, we don't analyze
-    if (
-      result.program.body[0].type === 'ExpressionStatement' &&
-      result.program.body[0].expression.type === 'Literal' &&
-      typeof result.program.body[0].expression.value === 'string'
-    ) {
-      fileDetails.dynamicImports.push({
-        type: 'dynamicImport',
-        statementNodeRange,
-        reportNodeRange: statementNodeRange,
-        moduleSpecifier: result.program.body[0].expression.value,
-      });
-    } else {
+    // Every import statement gets an entry. If the specifier is a string
+    // literal we record it. Otherwise (a variable, a template literal, a call)
+    // it can't be analyzed statically, and the entry records that with an
+    // undefined specifier, so later phases and rules can see that the
+    // statement exists without pretending to know where it points.
+    const body = result.program.body[0];
+    const moduleSpecifier =
+      body.type === 'ExpressionStatement' &&
+      body.expression.type === 'Literal' &&
+      typeof body.expression.value === 'string'
+        ? body.expression.value
+        : undefined;
+    if (moduleSpecifier === undefined) {
       debug(
-        `dynamic import ${moduleSpecifierText} in ${filePath} cannot be analyzed statically and will be ignored`
+        `dynamic import ${moduleSpecifierText} in ${filePath} does not have a static specifier and cannot be resolved`
       );
     }
+    fileDetails.dynamicImports.push({
+      type: 'dynamicImport',
+      statementNodeRange,
+      reportNodeRange: statementNodeRange,
+      moduleSpecifier,
+    });
   }
 
   for (const exportEntry of result.module.staticExports) {
@@ -447,6 +454,7 @@ function computeFileDetails({
             type: 'barrelReexport',
             moduleSpecifier,
             exportName: exportName ?? undefined,
+            isTypeReexport: entry.isType,
             isEntryPoint,
             isExternallyImported,
             statementNodeRange,

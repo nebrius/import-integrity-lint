@@ -6,6 +6,7 @@ import {
   createRule,
   getESMInfo,
   getLocFromRange,
+  isTypeOnly,
   registerUpdateListener,
 } from '../util.js';
 
@@ -63,8 +64,7 @@ function getOutgoingEdges(
     if (
       // Type imports/reexports are erased at compile time, so they cannot
       // participate in runtime cycles
-      ('isTypeImport' in importEntry && importEntry.isTypeImport) ||
-      ('isTypeReexport' in importEntry && importEntry.isTypeReexport) ||
+      isTypeOnly(importEntry) ||
       importEntry.resolvedModuleType !== 'firstPartyCode'
     ) {
       continue;
@@ -363,8 +363,7 @@ export const noCycle = createRule<Options, MessageIds>({
       ...fileInfo.sideEffectImports,
     ]) {
       if (
-        ('isTypeImport' in importEntry && importEntry.isTypeImport) ||
-        ('isTypeReexport' in importEntry && importEntry.isTypeReexport) ||
+        isTypeOnly(importEntry) ||
         importEntry.resolvedModuleType !== 'firstPartyCode'
       ) {
         continue;

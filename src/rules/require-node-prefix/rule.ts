@@ -50,7 +50,8 @@ export const requireNodePrefix = createRule({
     ]) {
       const { moduleSpecifier } = importEntry;
       if (
-        moduleSpecifier &&
+        // A dynamic import with a non-literal specifier can't be a builtin
+        moduleSpecifier !== undefined &&
         importEntry.resolvedModuleType === 'builtin' &&
         !moduleSpecifier.startsWith('node:')
       ) {

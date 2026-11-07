@@ -58,8 +58,13 @@ export type Resolved =
        *
        * Note: value is `undefined` if the import can't be resolved, aka the
        * module specifier isn't valid. While the developer's intentions might
-       * have been to import a code file, we can't don't know for sure.
-       * Pretending it's always a non-code file is safer
+       * have been to import a code file, we don't know for sure. Pretending
+       * it's always a non-code file is safer.
+       *
+       * This is also how a dynamic import with no static specifier
+       * (`import(someVariable)`) is recorded: there is nothing to resolve, so
+       * it has a type but no path. Rules tell the two apart by whether
+       * `moduleSpecifier` is defined.
        */
       resolvedModulePath: string | undefined;
     };

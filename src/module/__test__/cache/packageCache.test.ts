@@ -1,4 +1,4 @@
-import { existsSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { parse } from '@typescript-eslint/typescript-estree';
@@ -31,6 +31,23 @@ const packageSettings: ParsedPackageSettings = {
   defaultIgnoreOverrides: [],
   testFilePatterns: [],
 };
+
+function parseContents(contents: string) {
+  return parse(contents, {
+    loc: true,
+    range: true,
+    tokens: true,
+    jsx: true,
+  });
+}
+
+function getCodeFile(filePath: string) {
+  const fileDetails = getPackageInfo(TEST_PACKAGE_DIR).files.get(filePath);
+  if (!fileDetails || fileDetails.fileType !== 'code') {
+    throw new Error(`${filePath} is missing or is not a code file`);
+  }
+  return fileDetails;
+}
 
 const EXPECTED_FILE_A: StrippedAnalyzedFileDetails = {
   fileType: 'code',
@@ -472,4 +489,99 @@ it('Updates package cache in bulk for a non-code file', () => {
   });
   packageInfo = getPackageInfo(TEST_PACKAGE_DIR);
   expect(packageInfo).toMatchAnalyzedSpec(EXPECTED);
+});
+
+// A range-only update (whitespace, comments, function bodies) must not replace
+// the entry objects: cross-file references built in phase 3 (`importedBy[i]
+// .importEntry`, `rootExportEntry`) point at them, and rules correlate entries
+// across files by identity. It must only refresh the ranges, and every
+// reference must see the refreshed ranges.
+it('Preserves entry identity and refreshes cross-file ranges on a range-only update', () => {
+  initializePackage(packageSettings);
+
+  const exportBefore = getCodeFile(FILE_A).exports[0];
+  const importBefore = getCodeFile(FILE_B).singleImports[0];
+  expect(importBefore.rootExportEntry).toBe(exportBefore);
+  const [start, end] = exportBefore.statementNodeRange;
+
+  const shiftedContents = `\n\n${readFileSync(FILE_A, 'utf8')}`;
+  expect(
+    updateCacheForFile({
+      filePath: FILE_A,
+      fileContents: shiftedContents,
+      ast: parseContents(shiftedContents),
+      packageSettings,
+    })
+  ).toBe(false);
+
+  const exportAfter = getCodeFile(FILE_A).exports[0];
+  expect(exportAfter).toBe(exportBefore);
+  expect(exportAfter.statementNodeRange).toEqual([start + 2, end + 2]);
+
+  const importAfter = getCodeFile(FILE_B).singleImports[0];
+  expect(importAfter.rootExportEntry).toBe(exportBefore);
+  expect(importAfter.rootExportEntry?.statementNodeRange).toEqual([
+    start + 2,
+    end + 2,
+  ]);
+});
+
+// Every import statement gets an entry in every phase, even ones that can't be
+// resolved: an empty specifier (the normal editor state after auto-closed
+// quotes) and a dynamic import with a non-literal specifier. Base, resolved,
+// and analyzed arrays must stay index-aligned, because the range-only update
+// patches entries by index.
+it('Keeps every import entry aligned across phases and range-only updates when specifiers are empty or non-literal', () => {
+  initializePackage(packageSettings);
+
+  const contents = `import type { One } from './a';
+import { x } from '';
+
+const target = './a';
+async function load() {
+  return import(target);
+}
+
+console.log(x, load);
+`;
+  expect(
+    updateCacheForFile({
+      filePath: FILE_B,
+      fileContents: contents,
+      ast: parseContents(contents),
+      packageSettings,
+    })
+  ).toBe(true);
+
+  function expectAligned() {
+    const { singleImports, dynamicImports } = getCodeFile(FILE_B);
+    expect(singleImports).toHaveLength(2);
+    expect(singleImports[0]).toMatchObject({
+      importName: 'One',
+      resolvedModuleType: 'firstPartyCode',
+    });
+    expect(singleImports[1]).toMatchObject({
+      importName: 'x',
+      moduleSpecifier: '',
+      resolvedModuleType: 'thirdParty',
+    });
+    expect(dynamicImports).toHaveLength(1);
+    expect(dynamicImports[0]).toMatchObject({
+      moduleSpecifier: undefined,
+      resolvedModuleType: 'firstPartyOther',
+      resolvedModulePath: undefined,
+    });
+  }
+  expectAligned();
+
+  const shiftedContents = `\n${contents}`;
+  expect(
+    updateCacheForFile({
+      filePath: FILE_B,
+      fileContents: shiftedContents,
+      ast: parseContents(shiftedContents),
+      packageSettings,
+    })
+  ).toBe(false);
+  expectAligned();
 });

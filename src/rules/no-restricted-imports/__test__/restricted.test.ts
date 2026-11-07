@@ -29,6 +29,26 @@ beforeEach(() => {
 
 ruleTester.run('no-restricted-imports', noRestrictedImports, {
   valid: [
+    // A dynamic import with a non-literal specifier can't be matched against
+    // any restriction, even one that would catch the literal form.
+    {
+      code: `const target = './b';\nvoid import(target);`,
+      filename: FILE_A,
+      settings: {
+        'import-integrity': { packageRootDir: TEST_PACKAGE_DIR, mode: 'fix' },
+      },
+      options: [
+        {
+          rules: [
+            {
+              type: 'first-party',
+              filepath: './b.ts',
+              allowed: ['./c.ts'],
+            },
+          ],
+        },
+      ],
+    },
     {
       code: `import { b } from './b';\nimport { c } from './c';\nimport { fs } from 'node:fs';`,
       filename: FILE_A,
@@ -182,6 +202,29 @@ ruleTester.run('no-restricted-imports', noRestrictedImports, {
     },
     {
       code: `import type { e1 } from '../e/e1';`,
+      filename: FILE_D,
+      settings: {
+        'import-integrity': { packageRootDir: TEST_PACKAGE_DIR, mode: 'fix' },
+      },
+      options: [
+        {
+          rules: [
+            {
+              type: 'first-party',
+              filepath: /(.+?)\/[a-zA-Z0-9-_]+\.ts$/,
+              allowed: [/$1\/[a-zA-Z0-9-_]+\.ts$/],
+              excludeTypeImports: true,
+            },
+          ],
+        },
+      ],
+    },
+    // The exclusion covers every type-only statement, not just named imports
+    {
+      code: `import type * as e1ns from '../e/e1';
+export type { e1 } from '../e/e1';
+export type * from '../e/e1';
+export type * as e1star from '../e/e1';`,
       filename: FILE_D,
       settings: {
         'import-integrity': { packageRootDir: TEST_PACKAGE_DIR, mode: 'fix' },

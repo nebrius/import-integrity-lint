@@ -3,6 +3,8 @@ import {
   getESMInfo,
   getLocFromRange,
   isNonTestFile,
+  isTestOnlyName,
+  isTypeOnly,
 } from '../util.js';
 
 export const noTestOnlyImports = createRule({
@@ -54,27 +56,43 @@ export const noTestOnlyImports = createRule({
         continue;
       }
 
-      // Check if there are no imports at all and bail, since this means it's
-      // by definition not imported by a test file. Otherwise, it trips our
-      // logic below
-      if (exportEntry.importedBy.length === 0) {
+      // Type exports and type re-exports are exempt: they help surface issues
+      // in tests and have no runtime cost.
+      if (isTypeOnly(exportEntry)) {
         continue;
       }
 
       if (
-        !exportEntry.importedBy.some((i) => isNonTestFile(i.filePath)) &&
-        !exportEntry.exportName?.startsWith('_testOnly')
+        exportEntry.exportName !== undefined &&
+        isTestOnlyName(exportEntry.exportName)
       ) {
-        if (!(`isTypeExport` in exportEntry) || !exportEntry.isTypeExport) {
-          context.report({
-            messageId: 'noTestOnlyImports',
-            loc: getLocFromRange(context, exportEntry.reportNodeRange),
-            data: {
-              name: exportEntry.exportName || '<unnamed>',
-            },
-          });
-        }
+        continue;
       }
+
+      // An export is imported if something names it or holds a namespace
+      // object that contains it. Nothing importing it at all is
+      // no-unused-exports' concern, not ours; otherwise it is test-only when
+      // no non-test file imports it either way.
+      if (
+        exportEntry.importedBy.length === 0 &&
+        exportEntry.barrelImportedBy.length === 0
+      ) {
+        continue;
+      }
+      if (
+        exportEntry.importedBy.some((i) => isNonTestFile(i.filePath)) ||
+        exportEntry.barrelImportedBy.some((i) => isNonTestFile(i.filePath))
+      ) {
+        continue;
+      }
+
+      context.report({
+        messageId: 'noTestOnlyImports',
+        loc: getLocFromRange(context, exportEntry.reportNodeRange),
+        data: {
+          name: exportEntry.exportName || '<unnamed>',
+        },
+      });
     }
 
     return {};

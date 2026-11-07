@@ -38,26 +38,6 @@ In single-package setups, these options are the same in practice: both options e
 
 ## Caveats
 
-### All first-party code must live inside `packageRootDir`
-
-If files exist outside of `packageRootDir` and are imported by files inside it, those imports are marked as third-party imports. Since these files aren't listed as dependencies in `package.json`, they get flagged by the [no-unresolved-imports](../rules/no-unresolved-imports/) rule.
-
-### Barrel exports from third-party and built-in modules are ignored
-
-Import Integrity disables all checks on barrel imports from third-party and built-in modules. For example:
-
-```js
-// a.ts
-export * from 'node:path';
-
-// b.ts
-import { fake } from './a';
-```
-
-Import Integrity will not flag this as an error. This level of indirection is discouraged anyway, which is why Import Integrity ships with the [no-external-barrel-reexports](../rules/no-external-barrel-reexports/) rule.
-
-For more details, see the limitations section of [no-unresolved-imports](../rules/no-unresolved-imports/#limitations).
-
 ### Non-named barrel export entry points are not tracked
 
 If a barrel export doesn't use `* as foo`, the entry point of that barrel export isn't considered when analyzing cross-package imports. For example:

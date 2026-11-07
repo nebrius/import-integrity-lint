@@ -3,7 +3,12 @@ import { isAbsolute, resolve } from 'node:path';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 import { z } from 'zod';
 
-import { createRule, getESMInfo, getLocFromRange } from '../util.js';
+import {
+  createRule,
+  getESMInfo,
+  getLocFromRange,
+  isTypeOnly,
+} from '../util.js';
 
 const firstPartyEntrySchema = z.strictObject({
   type: z.enum(['first-party']),
@@ -119,17 +124,13 @@ export const noRestrictedImports = createRule<
       ...fileInfo.barrelReexports,
     ]) {
       const { moduleSpecifier } = importEntry;
-      /* istanbul ignore if */
-      if (!moduleSpecifier) {
+      // A dynamic import with a non-literal specifier can't be matched
+      if (moduleSpecifier === undefined) {
         continue;
       }
 
       for (const entry of entries) {
-        if (
-          'isTypeImport' in importEntry &&
-          importEntry.isTypeImport &&
-          entry.excludeTypeImports
-        ) {
+        if (entry.excludeTypeImports && isTypeOnly(importEntry)) {
           continue;
         }
         // Check if this import applies to this entry

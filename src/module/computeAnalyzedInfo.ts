@@ -124,7 +124,9 @@ export function computeAnalyzedInfo(
   }
 
   // Now that we have placeholder values for each entry, we're ready to
-  // analyze/traverse the tree
+  // analyze/traverse the tree. The name index is shared by every traversal in
+  // this run and is filled in lazily, one file at a time, by `lookupName`.
+  const nameIndex: NameIndex = new Map();
   for (const [filePath, fileDetails] of analyzedPackageInfo.files) {
     // Nothing to do if this isn't a code file
     if (fileDetails.fileType !== 'code') {
@@ -134,66 +136,50 @@ export function computeAnalyzedInfo(
     // First, analyze all imports
     // Note: we don't analyze side effect imports, since there is no imported
     // symbol to correlate to an export
-    for (const importDetails of fileDetails.singleImports) {
-      analyzeSingleImport({
-        originAnalyzedImport: {
-          type: 'single',
-          filePath,
-          importEntry: importDetails,
-        },
+    for (const importEntry of fileDetails.singleImports) {
+      analyzeOrigin(
+        { type: 'single', filePath, importEntry },
         analyzedPackageInfo,
-      });
+        nameIndex
+      );
     }
-    for (const importDetails of [
-      ...fileDetails.barrelImports,
-      ...fileDetails.dynamicImports,
-    ]) {
-      analyzeBarrelImport({
-        originAnalyzedImport: {
-          type: 'barrel',
-          filePath,
-          importEntry: importDetails,
-        },
-        pivotAnalyzedImport: importDetails,
+    for (const importEntry of fileDetails.barrelImports) {
+      analyzeOrigin(
+        { type: 'barrel', filePath, importEntry },
         analyzedPackageInfo,
-      });
+        nameIndex
+      );
+    }
+    for (const importEntry of fileDetails.dynamicImports) {
+      analyzeOrigin(
+        { type: 'barrel', filePath, importEntry },
+        analyzedPackageInfo,
+        nameIndex
+      );
     }
 
     // Now, treat reexports that are also entry points as an import, so that we
     // can mark the relevant exports they point to as being imported too (since
     // in reality they are)
-    for (const reexportDetails of fileDetails.singleReexports) {
-      if (
-        !reexportDetails.isEntryPoint &&
-        !reexportDetails.isExternallyImported
-      ) {
+    for (const reexportEntry of fileDetails.singleReexports) {
+      if (!reexportEntry.isEntryPoint && !reexportEntry.isExternallyImported) {
         continue;
       }
-      analyzeSingleImport({
-        originAnalyzedImport: {
-          type: 'single',
-          filePath,
-          importEntry: reexportDetails,
-        },
+      analyzeOrigin(
+        { type: 'single', filePath, importEntry: reexportEntry },
         analyzedPackageInfo,
-      });
+        nameIndex
+      );
     }
-    for (const reexportDetails of fileDetails.barrelReexports) {
-      if (
-        !reexportDetails.isEntryPoint &&
-        !reexportDetails.isExternallyImported
-      ) {
+    for (const reexportEntry of fileDetails.barrelReexports) {
+      if (!reexportEntry.isEntryPoint && !reexportEntry.isExternallyImported) {
         continue;
       }
-      analyzeBarrelImport({
-        originAnalyzedImport: {
-          type: 'barrel',
-          filePath,
-          importEntry: reexportDetails,
-        },
-        pivotAnalyzedImport: reexportDetails,
+      analyzeOrigin(
+        { type: 'barrel', filePath, importEntry: reexportEntry },
         analyzedPackageInfo,
-      });
+        nameIndex
+      );
     }
   }
 
@@ -211,324 +197,477 @@ export function computeAnalyzedInfo(
   return analyzedPackageInfo;
 }
 
-function linkImportToExport(
-  importFilePath: string,
-  importEntry: AnalyzedSingleImport | AnalyzedSingleReexport,
-  exportFilePath: string,
-  exportEntry: AnalyzedExport | AnalyzedBarrelReexport
-) {
-  /* istanbul ignore if */
-  if (importEntry.resolvedModuleType !== 'firstPartyCode') {
-    exitWithInternalError(
-      `Attempted to link export that is first party to import not marked as first party`
-    );
-  }
-
-  /* istanbul ignore if */
-  if (
-    importEntry.type === 'singleReexport' &&
-    !importEntry.isEntryPoint &&
-    !importEntry.isExternallyImported
-  ) {
-    exitWithInternalError(
-      `Attempted to link reexport that is not an entry point or externally imported`
-    );
-  }
-
-  // Update the export to include the import that imports it
-  exportEntry.importedBy.push({
-    filePath: importFilePath,
-    importEntry,
-  });
-
-  // Update the import to include the export it points to
-  Object.assign(importEntry, {
-    rootModuleType: 'firstPartyCode',
-    rootModulePath: exportFilePath,
-    rootExportEntry: exportEntry,
-  } satisfies Partial<AnalyzedSingleImport | AnalyzedSingleReexport>);
-}
-
-type AnalyzeSingleImportProps = {
-  originAnalyzedImport: {
-    type: 'single';
-    filePath: string;
-    importEntry: AnalyzedSingleImport | AnalyzedSingleReexport;
-  };
-  analyzedPackageInfo: AnalyzedPackageInfo;
+/**
+ * The import or reexport statement whose reachability is being traced. A
+ * "single" origin names one export (`import { a } from`, or an entry-point
+ * `export { a } from`). A "barrel" origin yields a whole namespace object
+ * (`import * as`, `import()`, or an entry-point `export *` / `export * as`).
+ */
+type SingleOrigin = {
+  type: 'single';
+  filePath: string;
+  importEntry: AnalyzedSingleImport | AnalyzedSingleReexport;
 };
-
-function analyzeSingleImport({
-  originAnalyzedImport,
-  analyzedPackageInfo,
-}: AnalyzeSingleImportProps) {
-  if (
-    originAnalyzedImport.importEntry.resolvedModuleType !== 'firstPartyCode'
-  ) {
-    return;
-  }
-
-  // Return value indicates if we've found the root export yet or not
-  const visited = new Set<string>();
-  function traverse(currentFile: string, currentImportName: string): boolean {
-    if (visited.has(currentFile)) {
-      return false;
-    }
-    visited.add(currentFile);
-    // Get the file from the package info
-    const targetFileDetails = analyzedPackageInfo.files.get(currentFile);
-
-    /* istanbul ignore if */
-    if (!targetFileDetails) {
-      exitWithInternalError(`File ${currentFile} is missing in package info`, {
-        filePath: originAnalyzedImport.filePath,
-        range: originAnalyzedImport.importEntry.statementNodeRange,
-      });
-    }
-
-    // Shouldn't happen in practice, but check anyways to make TypeScript happy,
-    // plus "shouldn't happen" has a funny way of coming true sometimes
-    /* istanbul ignore if */
-    if (targetFileDetails.fileType !== 'code') {
-      exitWithInternalError(
-        `moduleType on consumer of ${currentFile} is "code", but file type is "${targetFileDetails.fileType}"`,
-        {
-          filePath: originAnalyzedImport.filePath,
-          range: originAnalyzedImport.importEntry.statementNodeRange,
-        }
-      );
-    }
-
-    // First, check if we've found the root export
-    const exportEntry = targetFileDetails.exports.find(
-      (e) => currentImportName === e.exportName
-    );
-    if (exportEntry?.exportName === currentImportName) {
-      linkImportToExport(
-        originAnalyzedImport.filePath,
-        originAnalyzedImport.importEntry,
-        currentFile,
-        exportEntry
-      );
-      return true;
-    }
-
-    // Next, check if there is a single re-export that matches
-    const singleReexportEntry = targetFileDetails.singleReexports.find(
-      (r) => r.exportName === currentImportName
-    );
-    if (singleReexportEntry) {
-      switch (singleReexportEntry.resolvedModuleType) {
-        case 'builtin':
-        case 'thirdParty': {
-          originAnalyzedImport.importEntry.rootModuleType =
-            singleReexportEntry.resolvedModuleType;
-          return true;
-        }
-        case 'firstPartyOther': {
-          Object.assign(singleReexportEntry, {
-            rootModuleType: 'firstPartyOther',
-            rootModulePath: currentFile,
-          } satisfies Partial<AnalyzedSingleReexport>);
-          return true;
-        }
-        case 'firstPartyCode': {
-          // This will always be a single import to start with, so we know it
-          // won't use barrelExportedBy at this point
-          singleReexportEntry.importedBy.push({
-            filePath: originAnalyzedImport.filePath,
-            importEntry: originAnalyzedImport.importEntry,
-          });
-          if (
-            traverse(
-              singleReexportEntry.resolvedModulePath,
-              singleReexportEntry.importName
-            )
-          ) {
-            return true;
-          }
-          break;
-        }
-      }
-    }
-
-    // Now check if there's a named barrel export that matches the name of the
-    // import we're looking for. In such a case, it markes the end of discovery,
-    // since the named import points to multiple sources
-    const barrelReexportEntry = targetFileDetails.barrelReexports.find(
-      (r) => r.exportName === currentImportName
-    );
-    if (barrelReexportEntry) {
-      if (barrelReexportEntry.resolvedModuleType === 'firstPartyCode') {
-        linkImportToExport(
-          originAnalyzedImport.filePath,
-          originAnalyzedImport.importEntry,
-          currentFile,
-          barrelReexportEntry
-        );
-
-        // Even though we found what the import points to, we need to traverse
-        // the barrel re-export to ensure we mark all exports bundled together
-        // are marked as being imported by this import
-        analyzeBarrelImport({
-          originAnalyzedImport,
-          pivotAnalyzedImport: barrelReexportEntry,
-          analyzedPackageInfo,
-        });
-
-        // Regardless of what happened when further traversing the barrel
-        // re-export, we know we found what the import points too.
-        return true;
-      } else {
-        // Otherwise, we're doing a barrel reexport of, say, a CSS module.
-        // I'm pretty certain that this syntax is the same as doing a non-barrel
-        // reexport, since these files can only have a single default export
-        // (think the difference between `* as React` vs `React`). Nonetheless,
-        // we can still analyze it.
-        if (barrelReexportEntry.resolvedModuleType === 'firstPartyOther') {
-          // If we couldn't resolve the file, then we might as well keep looking
-          // for this export elsewhere, even though it likely indicates a
-          // pathing bug on the user's part.
-          if (!barrelReexportEntry.resolvedModulePath) {
-            return false;
-          }
-          Object.assign(originAnalyzedImport.importEntry, {
-            rootModuleType: 'firstPartyOther',
-            rootModulePath: barrelReexportEntry.resolvedModulePath,
-          } satisfies Partial<AnalyzedSingleImport | AnalyzedSingleReexport>);
-          return true;
-        }
-
-        // This means we're import third party non-code items, such as CSS
-        // styles from something like Tailwind
-        Object.assign(originAnalyzedImport.importEntry, {
-          rootModuleType: barrelReexportEntry.resolvedModuleType,
-        } satisfies Partial<AnalyzedSingleImport | AnalyzedSingleReexport>);
-        return true;
-      }
-    }
-
-    // Finally, check and traverse all barrel re-exports. Since we don't know
-    // what barrel exports contain, we have to traverse all of them in a
-    // depth-first search
-    for (const reexportEntry of targetFileDetails.barrelReexports) {
-      // Technically speaking, it's possible for the root export to exist here
-      // if, say, someone did something stupid like `import { join } from
-      // './foo'` coupled with `export * from 'node:path'`. That's really bad
-      // coding though so we're not going to support it here
-      if (reexportEntry.resolvedModuleType !== 'firstPartyCode') {
-        continue;
-      }
-
-      if (traverse(reexportEntry.resolvedModulePath, currentImportName)) {
-        // If we found the root export, bail early
-        return true;
-      }
-    }
-
-    // Finally, if we got here, we couldn't resolve the root export
-    return false;
-  }
-
-  traverse(
-    originAnalyzedImport.importEntry.resolvedModulePath,
-    originAnalyzedImport.importEntry.importName
-  );
-}
-
-type AnalyzeBarrelImportProps = {
-  originAnalyzedImport:
-    | {
-        type: 'single';
-        filePath: string;
-        importEntry: AnalyzedSingleImport | AnalyzedSingleReexport;
-      }
-    | {
-        type: 'barrel';
-        filePath: string;
-        importEntry:
-          | AnalyzedBarrelImport
-          | AnalyzedDynamicImport
-          | AnalyzedBarrelReexport;
-      };
-  pivotAnalyzedImport:
+type BarrelOrigin = {
+  type: 'barrel';
+  filePath: string;
+  importEntry:
     | AnalyzedBarrelImport
     | AnalyzedDynamicImport
     | AnalyzedBarrelReexport;
+};
+type Origin = SingleOrigin | BarrelOrigin;
+
+/**
+ * How an entry was reached from the origin. `single` means the origin names
+ * this entry, directly or through a chain of named reexports, and the entry is
+ * recorded in `importedBy`. `barrel` means the entry is a member of a
+ * namespace object the origin yields, and it is recorded in
+ * `barrelImportedBy`. Once a traversal passes through a namespace it stays
+ * `barrel`, even when the origin itself is a single import.
+ */
+type Via = 'single' | 'barrel';
+
+/** Any entry that carries `importedBy` / `barrelImportedBy` lists. */
+type Reachable =
+  | AnalyzedExport
+  | AnalyzedSingleReexport
+  | AnalyzedBarrelReexport;
+
+/**
+ * Per-file lookup from export name to the entry that supplies it, filled in
+ * lazily once per phase-3 run. Only `resolveName` consults it, so origins that
+ * never resolve a name (e.g. `import * as` of a module with no reexports)
+ * never pay for building it.
+ */
+type NameIndex = Map<AnalyzedCodeFileDetails, Map<string, Reachable>>;
+
+/**
+ * Everything one top-level traversal needs. The name index is shared by every
+ * traversal in the run; the origin and the namespace-visited map belong to
+ * this traversal only.
+ */
+type Context = {
+  origin: Origin;
   analyzedPackageInfo: AnalyzedPackageInfo;
+  nameIndex: NameIndex;
+  /**
+   * Files whose namespace has already been marked for this origin, mapped to
+   * whether that pass included the `default` export. See `markNamespace`.
+   */
+  namespaceVisited: Map<string, boolean>;
 };
 
-function analyzeBarrelImport({
-  originAnalyzedImport,
-  pivotAnalyzedImport,
-  analyzedPackageInfo,
-}: AnalyzeBarrelImportProps) {
-  if (
-    originAnalyzedImport.importEntry.resolvedModuleType !== 'firstPartyCode'
-  ) {
+/** What a by-name resolution ends at, written onto a single origin. */
+type RootInfo =
+  | { rootModuleType: 'builtin' | 'thirdParty' }
+  | { rootModuleType: 'firstPartyOther'; rootModulePath: string | undefined }
+  | {
+      rootModuleType: 'firstPartyCode';
+      rootModulePath: string;
+      rootExportEntry: AnalyzedExport | AnalyzedBarrelReexport;
+    };
+
+/**
+ * Runs one origin to completion: a single origin resolves the one name it
+ * imports, a barrel origin marks the whole namespace it yields. An origin that
+ * doesn't point at first party code has nothing to reach.
+ */
+function analyzeOrigin(
+  origin: Origin,
+  analyzedPackageInfo: AnalyzedPackageInfo,
+  nameIndex: NameIndex
+) {
+  if (origin.importEntry.resolvedModuleType !== 'firstPartyCode') {
     return;
   }
-
-  const visited = new Set<string>();
-  function traverse(currentFile: string) {
-    if (visited.has(currentFile)) {
-      return;
+  const ctx: Context = {
+    origin,
+    analyzedPackageInfo,
+    nameIndex,
+    namespaceVisited: new Map(),
+  };
+  if (origin.type === 'single') {
+    // Only a single origin has a root, and this is the one place it is written
+    const root = resolveName(
+      ctx,
+      origin.importEntry.resolvedModulePath,
+      origin.importEntry.importName,
+      'single'
+    );
+    if (root) {
+      Object.assign(origin.importEntry, root);
     }
-    visited.add(currentFile);
-    // Get the file from the package info
-    const targetFileDetails = analyzedPackageInfo.files.get(currentFile);
-
-    /* istanbul ignore if */
-    if (!targetFileDetails) {
-      exitWithInternalError(`File ${currentFile} is missing in package info`, {
-        filePath: originAnalyzedImport.filePath,
-        range: originAnalyzedImport.importEntry.statementNodeRange,
-      });
-    }
-
-    // Shouldn't happen in practice, but check anyways to make TypeScript happy,
-    // plus "shouldn't happen" has a funny way of coming true sometimes
-    /* istanbul ignore if */
-    if (targetFileDetails.fileType !== 'code') {
-      exitWithInternalError(
-        `moduleType on consumer of ${currentFile} is "code", but file type is "${targetFileDetails.fileType}"`,
-        {
-          filePath: originAnalyzedImport.filePath,
-          range: originAnalyzedImport.importEntry.statementNodeRange,
-        }
-      );
-    }
-
-    // First, mark each export as being barrel imported
-    for (const exportEntry of targetFileDetails.exports) {
-      exportEntry.barrelImportedBy.push({
-        filePath: originAnalyzedImport.filePath,
-        importEntry: originAnalyzedImport.importEntry,
-      });
-    }
-
-    // Now go through reexports and traverse further
-    for (const reexportEntry of [
-      ...targetFileDetails.singleReexports,
-      ...targetFileDetails.barrelReexports,
-    ]) {
-      // Nothing to do in non-first party code
-      if (reexportEntry.resolvedModuleType !== 'firstPartyCode') {
-        continue;
-      }
-      traverse(reexportEntry.resolvedModulePath);
-    }
+  } else {
+    markNamespace(
+      ctx,
+      origin.importEntry.resolvedModulePath,
+      namespaceIncludesDefault(origin.importEntry)
+    );
   }
+}
+
+/**
+ * Whether the namespace object a statement yields has a `default` member. A
+ * bare `export *` is the one namespace source that never forwards `default`;
+ * `import * as`, `import()`, and `export * as` all include it.
+ */
+function namespaceIncludesDefault(entry: BarrelOrigin['importEntry']) {
+  return entry.type !== 'barrelReexport' || entry.exportName !== undefined;
+}
+
+function getCodeFileDetails(
+  ctx: Context,
+  filePath: string
+): AnalyzedCodeFileDetails {
+  const fileDetails = ctx.analyzedPackageInfo.files.get(filePath);
 
   /* istanbul ignore if */
-  if (pivotAnalyzedImport.resolvedModuleType !== 'firstPartyCode') {
+  if (!fileDetails) {
+    exitWithInternalError(`File ${filePath} is missing in package info`, {
+      filePath: ctx.origin.filePath,
+      range: ctx.origin.importEntry.statementNodeRange,
+    });
+  }
+
+  // Shouldn't happen in practice, but check anyways to make TypeScript happy,
+  // plus "shouldn't happen" has a funny way of coming true sometimes
+  /* istanbul ignore if */
+  if (fileDetails.fileType !== 'code') {
     exitWithInternalError(
-      `Attempted to traverse barrel import that is not first party code`,
+      `moduleType on consumer of ${filePath} is "code", but file type is "${fileDetails.fileType}"`,
       {
-        filePath: originAnalyzedImport.filePath,
-        range: originAnalyzedImport.importEntry.statementNodeRange,
+        filePath: ctx.origin.filePath,
+        range: ctx.origin.importEntry.statementNodeRange,
       }
     );
   }
-  traverse(pivotAnalyzedImport.resolvedModulePath);
+
+  return fileDetails;
+}
+
+function lookupName(
+  ctx: Context,
+  fileDetails: AnalyzedCodeFileDetails,
+  name: string
+): Reachable | undefined {
+  let names = ctx.nameIndex.get(fileDetails);
+  if (!names) {
+    names = new Map();
+    // A module's own exports take precedence over what it reexports, and a
+    // named reexport over an `export *`. Duplicate export names across these
+    // are a SyntaxError, so first-wins only ever matters for invalid modules.
+    for (const entry of fileDetails.exports) {
+      if (!names.has(entry.exportName)) {
+        names.set(entry.exportName, entry);
+      }
+    }
+    for (const entry of fileDetails.singleReexports) {
+      if (!names.has(entry.exportName)) {
+        names.set(entry.exportName, entry);
+      }
+    }
+    for (const entry of fileDetails.barrelReexports) {
+      if (entry.exportName !== undefined && !names.has(entry.exportName)) {
+        names.set(entry.exportName, entry);
+      }
+    }
+    ctx.nameIndex.set(fileDetails, names);
+  }
+  return names.get(name);
+}
+
+/**
+ * Records that the origin reaches `entry`, in the list that `via` selects.
+ *
+ * Phase 3 runs one origin to completion before starting the next, so every
+ * push for an origin into any one list is contiguous. That is the only reason
+ * checking the last element is an exact dedupe. If traversal order ever
+ * interleaves origins, this has to become a per-origin set instead.
+ */
+function markImported(ctx: Context, entry: Reachable, via: Via) {
+  const { origin } = ctx;
+  if (via === 'single') {
+    /* istanbul ignore if */
+    if (origin.type !== 'single') {
+      exitWithInternalError(
+        'Attempted to record a by-name import from a namespace origin',
+        {
+          filePath: origin.filePath,
+          range: origin.importEntry.statementNodeRange,
+        }
+      );
+    }
+    if (entry.importedBy.at(-1)?.importEntry === origin.importEntry) {
+      return;
+    }
+    entry.importedBy.push({
+      filePath: origin.filePath,
+      importEntry: origin.importEntry,
+    });
+  } else {
+    if (entry.barrelImportedBy.at(-1)?.importEntry === origin.importEntry) {
+      return;
+    }
+    entry.barrelImportedBy.push({
+      filePath: origin.filePath,
+      importEntry: origin.importEntry,
+    });
+  }
+}
+
+/**
+ * Finds what `name`, imported from `file`, refers to, recording every entry
+ * the lookup passes through as reached by the origin. Returns what the name
+ * ultimately resolves to, or `undefined` if it wasn't found.
+ *
+ * Code the plugin can see always wins. Only when it supplies nothing does a
+ * second search let a bare `export *` of a module the plugin can't look
+ * inside count as supplying the name. A single search can't do this: it is
+ * depth-first, so trusting such an `export *` found under the first branch
+ * would end it before a later branch that does supply the name was tried.
+ */
+function resolveName(
+  ctx: Context,
+  file: string,
+  name: string,
+  via: Via
+): RootInfo | undefined {
+  return (
+    searchName(ctx, file, name, { via, visited: new Set(), opaque: false }) ??
+    searchName(ctx, file, name, { via, visited: new Set(), opaque: true })
+  );
+}
+
+/** One of `resolveName`'s searches. */
+type NameSearch = {
+  via: Via;
+  visited: Set<string>;
+  /**
+   * Whether a bare `export *` of a first party module the plugin can't look
+   * inside may supply the name
+   */
+  opaque: boolean;
+};
+
+function searchName(
+  ctx: Context,
+  currentFile: string,
+  name: string,
+  search: NameSearch
+): RootInfo | undefined {
+  const { via, visited } = search;
+  // Keyed by file *and* name. A renaming reexport can legitimately bring the
+  // search back to a file that was already probed under a different name:
+  // `export * from './impl'` beside `export * from './rename'`, where rename
+  // is `export { a as b } from './impl'`, probes impl for `b` and then again
+  // for `a`. Keying by file alone refused that second visit and left the
+  // import unresolved. The state space is finite, so cycles still terminate.
+  const visitKey = `${currentFile}\0${name}`;
+  if (visited.has(visitKey)) {
+    return undefined;
+  }
+  visited.add(visitKey);
+  const fileDetails = getCodeFileDetails(ctx, currentFile);
+
+  const hit = lookupName(ctx, fileDetails, name);
+  if (hit) {
+    switch (hit.type) {
+      // We found the root export
+      case 'export': {
+        markImported(ctx, hit, via);
+        return {
+          rootModuleType: 'firstPartyCode',
+          rootModulePath: currentFile,
+          rootExportEntry: hit,
+        };
+      }
+
+      // A named reexport: follow it by name. The reexport statement itself is
+      // reached whatever its target turns out to be.
+      case 'singleReexport': {
+        markImported(ctx, hit, via);
+        if (hit.resolvedModuleType !== 'firstPartyCode') {
+          return resolveNonCodeTarget(hit);
+        }
+        const root = searchName(
+          ctx,
+          hit.resolvedModulePath,
+          hit.importName,
+          search
+        );
+        if (root) {
+          return root;
+        }
+        // The chain is broken somewhere past this reexport. Keep looking
+        // through this file's `export *` statements before giving up. This is
+        // deliberately lenient: a module whose named reexport is broken fails
+        // to link, which TypeScript and bundlers report, so only invalid
+        // modules get here.
+        break;
+      }
+
+      // A named barrel reexport (`export * as name`) is as far as a name can be
+      // followed: past it lies a namespace object, so everything in it is
+      // reached as a namespace member.
+      case 'barrelReexport': {
+        markImported(ctx, hit, via);
+        if (hit.resolvedModuleType !== 'firstPartyCode') {
+          return resolveNonCodeTarget(hit);
+        }
+        markNamespace(
+          ctx,
+          hit.resolvedModulePath,
+          namespaceIncludesDefault(hit)
+        );
+        return {
+          rootModuleType: 'firstPartyCode',
+          rootModulePath: currentFile,
+          rootExportEntry: hit,
+        };
+      }
+    }
+  }
+
+  // No named entry supplies `name`, so it can only come through a bare
+  // `export *`. Those never forward `default`, and we don't know what they
+  // contain, so search each one depth-first. The statement that turns out to
+  // supply the name is itself reached.
+  if (name === 'default') {
+    return undefined;
+  }
+  for (const reexportEntry of fileDetails.barrelReexports) {
+    // Technically speaking, it's possible for the root export to exist behind
+    // a non-first-party `export *` if, say, someone did something stupid like
+    // `import { join } from './foo'` coupled with `export * from 'node:path'`.
+    // That's really bad coding though so we're not going to support it here,
+    // and `no-external-barrel-reexports` reports it. First party modules the
+    // plugin can't look inside are handled by the opaque search below.
+    if (
+      reexportEntry.exportName !== undefined ||
+      reexportEntry.resolvedModuleType !== 'firstPartyCode'
+    ) {
+      continue;
+    }
+    const root = searchName(
+      ctx,
+      reexportEntry.resolvedModulePath,
+      name,
+      search
+    );
+    if (root) {
+      markImported(ctx, reexportEntry, via);
+      return root;
+    }
+  }
+
+  // In the opaque search, a bare `export *` of a first party module the
+  // plugin can't look inside (a file it doesn't analyze, or a non-code file)
+  // may supply the name. Any of them could, so each one is reached, and the
+  // name resolves to the first.
+  if (!search.opaque) {
+    return undefined;
+  }
+  let root: RootInfo | undefined;
+  for (const reexportEntry of fileDetails.barrelReexports) {
+    if (
+      reexportEntry.exportName === undefined &&
+      reexportEntry.resolvedModuleType === 'firstPartyOther'
+    ) {
+      markImported(ctx, reexportEntry, via);
+      root ??= resolveNonCodeTarget(reexportEntry);
+    }
+  }
+  return root;
+}
+
+/** A reexport whose target is anything but first party code. */
+type NonCodeReexport = Exclude<
+  AnalyzedSingleReexport | AnalyzedBarrelReexport,
+  { resolvedModuleType: 'firstPartyCode' }
+>;
+
+/**
+ * Terminal step of a by-name resolution whose target is not first party code.
+ * Shared by single reexports, named barrel reexports, and the bare `export *`
+ * statements of the opaque search: they are identical here, and keeping one
+ * copy is what keeps them from drifting apart.
+ */
+function resolveNonCodeTarget(hit: NonCodeReexport): RootInfo {
+  switch (hit.resolvedModuleType) {
+    case 'builtin':
+    case 'thirdParty': {
+      return { rootModuleType: hit.resolvedModuleType };
+    }
+    case 'firstPartyOther': {
+      // A path of `undefined` means the specifier matched no file the plugin
+      // knows. That can be an ignored file such as build output rather than a
+      // missing one, so the name counts as resolved, just as an import
+      // straight from that specifier goes unchecked.
+      return {
+        rootModuleType: 'firstPartyOther',
+        rootModulePath: hit.resolvedModulePath,
+      };
+    }
+  }
+}
+
+/**
+ * Records every member of `file`'s namespace object as reached by the origin,
+ * following reexports: a single reexport contributes exactly the export it
+ * names, a named barrel reexport contributes a whole nested namespace, and a
+ * bare `export *` contributes everything except `default`.
+ *
+ * The visited map is three-state per file: unvisited, visited without
+ * `default`, visited with `default`. A revisit that now includes `default`
+ * only handles the entries the first pass skipped; everything else was already
+ * handled with the correct flags, since the flag for each child is determined
+ * by the child statement, not by how the container was reached.
+ */
+function markNamespace(ctx: Context, file: string, includeDefault: boolean) {
+  const previous = ctx.namespaceVisited.get(file);
+  if (previous === true || previous === includeDefault) {
+    return;
+  }
+  ctx.namespaceVisited.set(file, includeDefault);
+  // On a revisit, only what the first pass skipped is new
+  const onlyDefaults = previous === false;
+  const fileDetails = getCodeFileDetails(ctx, file);
+
+  const skip = (entry: { exportName: string | undefined }) => {
+    const isDefault = entry.exportName === 'default';
+    return (!includeDefault && isDefault) || (onlyDefaults && !isDefault);
+  };
+
+  for (const entry of fileDetails.exports) {
+    if (skip(entry)) {
+      continue;
+    }
+    markImported(ctx, entry, 'barrel');
+  }
+  for (const entry of fileDetails.singleReexports) {
+    if (skip(entry)) {
+      continue;
+    }
+    // Every member of the namespace is reached, whatever module it points to
+    markImported(ctx, entry, 'barrel');
+    // ...but a single reexport only brings the one export it names into the
+    // namespace, so follow it by name rather than marking its whole file
+    if (entry.resolvedModuleType === 'firstPartyCode') {
+      resolveName(ctx, entry.resolvedModulePath, entry.importName, 'barrel');
+    }
+  }
+  for (const entry of fileDetails.barrelReexports) {
+    if (skip(entry)) {
+      continue;
+    }
+    markImported(ctx, entry, 'barrel');
+    if (entry.resolvedModuleType === 'firstPartyCode') {
+      markNamespace(
+        ctx,
+        entry.resolvedModulePath,
+        namespaceIncludesDefault(entry)
+      );
+    }
+  }
 }

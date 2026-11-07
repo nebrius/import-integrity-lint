@@ -351,6 +351,11 @@ function getPotentialFilesList(
   const dirContents = readdirSync(packageRootDir, {
     withFileTypes: true,
   });
+  // Node doesn't document the order readdir returns entries in (libuv happens
+  // to sort on Unix; elsewhere it is whatever the filesystem hands back). Sort
+  // so the file list, and with it the order of every importedBy list, is the
+  // same on every platform. Names within a directory are unique, so no ties.
+  dirContents.sort((a, b) => (a.name < b.name ? -1 : 1));
 
   for (const content of dirContents) {
     if (!content.isDirectory()) {
