@@ -19,6 +19,7 @@
 - Fixed import statements with an empty module specifier (`import { x } from ''`) or a non-literal dynamic specifier (`import(someVariable)`) being dropped from analysis. In `fix` and `editor` mode, the missing entry left the file's cached analysis misaligned for the rules that ran after it in the same lint pass. Both are now recorded like every other statement, and a non-literal dynamic import cannot be resolved and is not reported by any rule
 - Fixed `no-unresolved-imports` not reporting an empty module specifier in an import or re-export (`import { x } from ''`, `export { x } from ''`), which is usually an unfinished edit. It now has a dedicated message
 - Fixed cross-file references (an import's resolved export, an export's importers) holding stale source ranges after a whitespace-only edit in `fix` and `editor` mode
+- Fixed a crash (`RangeError: path should be a path.relative()d string`) in packages where a directory containing a `.gitignore` file shares a name prefix with a sibling directory, such as `fixtures/foo/` and `fixtures/foo-bar/`. The nested `.gitignore` was applied to the sibling's files as if they were inside it. This regressed in 1.3.0, which started applying nested `.gitignore` files
 
 ## 1.3.1 (2026-10-15)
 

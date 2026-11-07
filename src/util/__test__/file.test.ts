@@ -155,6 +155,19 @@ it('Applies .gitignore files nested inside the package tree', async () => {
   expect(filePaths).toContain(join(TEST_PACKAGE_DIR, 'src/a.ts'));
 });
 
+it("Doesn't apply a nested .gitignore to sibling directories that share its name prefix", async () => {
+  // prefixSiblings/foo/.gitignore ignores *.ts. The path of
+  // prefixSiblings/foo-bar/kept.ts starts with the string
+  // `prefixSiblings/foo`, but kept.ts is not inside foo/, so foo's .gitignore
+  // must not be applied to it (and doing so used to throw a RangeError from
+  // the ignore library, since the relative path starts with `../`)
+  const packageRootDir = join(TEST_PACKAGE_DIR, 'prefixSiblings');
+  const files = await getFiles(packageRootDir, [], [], []);
+  const filePaths = files.files.map(({ filePath }) => filePath);
+  expect(filePaths).toContain(join(packageRootDir, 'foo-bar/kept.ts'));
+  expect(filePaths).not.toContain(join(packageRootDir, 'foo/ignored.ts'));
+});
+
 it('Ignores default directories and dot directories', () => {
   // Ordinary paths are analyzed
   expect(
