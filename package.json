@@ -1,6 +1,6 @@
 {
   "name": "import-integrity-lint",
-  "version": "1.4.0",
+  "version": "2.0.0",
   "description": "High-performance ESLint/Oxlint plugin that catches dead code, broken imports, and architectural violations. Optimized for monorepos.",
   "keywords": [
     "eslint",
@@ -37,6 +37,9 @@
       "types": "./dist/plugin.d.ts",
       "default": "./dist/plugin.js"
     }
+  },
+  "engines": {
+    "node": ">=22.12.0"
   },
   "scripts": {
     "lint": "npm run lint:eslint && npm run lint:oxlint",
