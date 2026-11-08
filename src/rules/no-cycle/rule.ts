@@ -326,8 +326,8 @@ export const noCycle = createRule<Options, MessageIds>({
     messages: {
       noCycles: 'Imports/reexports cannot form a cycle: {{cyclePath}}',
     },
+    defaultOptions: [],
   },
-  defaultOptions: [],
   create(context) {
     const esmInfo = getESMInfo(context);
 

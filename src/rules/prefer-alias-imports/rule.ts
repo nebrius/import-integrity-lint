@@ -97,8 +97,8 @@ export const preferAliasImports = createRule<
       preferRelative:
         'Use relative import "{{relative}}" instead of alias "{{alias}}" for local files under the same alias',
     },
+    defaultOptions: [{ mode: MODE_DEFAULT }],
   },
-  defaultOptions: [{ mode: MODE_DEFAULT }],
   create(context) {
     const esmInfo = getESMInfo(context);
 

@@ -8,7 +8,7 @@ Restricts which files can import which modules.
 
 This rule lets you define restrictions on which files can import which modules. Restrictions can apply to first-party files within your codebase or to third-party packages, and can use either string paths or regular expressions (with capture groups for parameterized restrictions).
 
-Unlike most rules in Import Integrity, `no-restricted-imports` is not enabled in the default configuration. It requires rule-specific options that depend on your codebase's architecture, so it can't be configured automatically.
+Unlike most rules in Import Integrity, `no-restricted-imports` is not enabled in the default configuration. It requires rule-specific options that depend on your codebase's architecture, so it can't be configured automatically. Enabling it without options is a configuration error, and linting stops with a message saying so.
 
 ## Motivating example
 

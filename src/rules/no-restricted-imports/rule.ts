@@ -3,6 +3,7 @@ import { isAbsolute, resolve } from 'node:path';
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 import { z } from 'zod';
 
+import { exitWithError } from '../../util/error.js';
 import {
   createRule,
   getESMInfo,
@@ -48,25 +49,41 @@ function replaceMatchesInRegex(regex: RegExp, matches: string[] | null) {
   return new RegExp(source, regex.flags);
 }
 
+// The rule restricts nothing without options, so it has no default: enabling
+// it without any is a configuration mistake
 export const noRestrictedImports = createRule<
-  [{ rules: Entry[] }],
+  [options?: { rules: Entry[] }],
   'restrictedImport'
 >({
   name: 'no-restricted-imports',
   meta: {
     docs: {
       description:
-        'Esnures restricted imports are only imported by allowed consumers',
+        'Ensures restricted imports are only imported by allowed consumers',
     },
-    schema: [schema.toJSONSchema({ unrepresentable: 'any' }) as JSONSchema4],
+    schema: {
+      type: 'array',
+      items: [schema.toJSONSchema({ unrepresentable: 'any' }) as JSONSchema4],
+      minItems: 1,
+      maxItems: 1,
+    },
     fixable: undefined,
     type: 'problem',
     messages: {
       restrictedImport: '{{message}}',
     },
   },
-  defaultOptions: [{ rules: [] }],
   create(context) {
+    // The schema already requires options, but validation can't be relied on:
+    // ESLint 9 has been seen running rules whose options fail it, and Oxlint
+    // may not check it at all
+    const [options] = context.options;
+    if (!options) {
+      exitWithError(
+        'Rule import-integrity/no-restricted-imports was enabled without options. It needs a `rules` array describing which imports to restrict'
+      );
+    }
+
     const esmInfo = getESMInfo(context);
 
     // No package info means this file wasn't found as part of the package, e.g.
@@ -84,7 +101,7 @@ export const noRestrictedImports = createRule<
 
     // Normalize allowed and denied string paths to absolute
     const entries: Entry[] = [];
-    for (const originalEntry of context.options[0].rules) {
+    for (const originalEntry of options.rules) {
       const entry = { ...originalEntry };
       entries.push(entry);
       if (entry.allowed) {

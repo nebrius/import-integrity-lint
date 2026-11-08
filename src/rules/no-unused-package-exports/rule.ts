@@ -27,8 +27,8 @@ export const noUnusedPackageExports = createRule<
       noUnusedPackageExports:
         'Export point export "{{name}}" must be imported in another package',
     },
+    defaultOptions: [{ ignorePackages: [] }],
   },
-  defaultOptions: [{ ignorePackages: [] }],
   create(context) {
     const esmInfo = getESMInfo(context);
 

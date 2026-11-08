@@ -12,8 +12,8 @@ export const noUnusedExports = createRule({
     messages: {
       noUnusedExports: 'Export "{{name}}" must be imported in another file',
     },
+    defaultOptions: [],
   },
-  defaultOptions: [],
   create(context) {
     // .d.ts files are not typically referenced directly, and instead are used
     // to type ambient modules. Sometimes they are used directly though when

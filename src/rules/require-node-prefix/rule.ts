@@ -22,8 +22,8 @@ export const requireNodePrefix = createRule({
       missingNodePrefix:
         'Import of Node.js built-in modules must use the `node:` prefix',
     },
+    defaultOptions: [],
   },
-  defaultOptions: [],
   create(context) {
     const esmInfo = getESMInfo(context);
 

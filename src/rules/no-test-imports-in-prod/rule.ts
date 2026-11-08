@@ -103,8 +103,8 @@ export const noTestImportsInProd = createRule({
       noTestOnlyReexport:
         'Re-export exposes test-only export "{{name}}" outside the package',
     },
+    defaultOptions: [],
   },
-  defaultOptions: [],
   create(context) {
     const esmInfo = getESMInfo(context);
 

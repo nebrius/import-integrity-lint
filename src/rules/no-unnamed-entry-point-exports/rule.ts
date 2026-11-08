@@ -13,8 +13,8 @@ export const noUnnamedEntryPointExports = createRule({
       noUnnamedEntryPointExports:
         'Barrel reexports in entry points must be named',
     },
+    defaultOptions: [],
   },
-  defaultOptions: [],
   create(context) {
     const esmInfo = getESMInfo(context);
 

@@ -20,8 +20,8 @@ export const noTestOnlyImports = createRule({
     messages: {
       noTestOnlyImports: 'Export "{{name}}" must be imported by non-test files',
     },
+    defaultOptions: [],
   },
-  defaultOptions: [],
   create(context) {
     // .d.ts files are not typically referenced directly, and instead are used
     // to type ambient modules. Sometimes they are used directly though when

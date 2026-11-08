@@ -167,13 +167,7 @@ function toMatchSpec<
       };
     }
 
-    function compareSet(
-      expected: Omit<
-        BaseESMStatement,
-        'statementNodeRange' | 'reportNodeRange'
-      >[],
-      actual: BaseESMStatement[]
-    ) {
+    function compareSet(expected: object[], actual: BaseESMStatement[]) {
       const actualStripped = actual.map(
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         ({ statementNodeRange, reportNodeRange, ...rest }) => rest

@@ -14,8 +14,8 @@ export const noNamedAsDefault = createRule({
       noNamedAsDefault:
         'Default import alias must not have the same name as a named export',
     },
+    defaultOptions: [],
   },
-  defaultOptions: [],
   create(context) {
     const esmInfo = getESMInfo(context);
 

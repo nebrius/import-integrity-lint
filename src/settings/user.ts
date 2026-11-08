@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 
-import { parse, printParseErrorCode } from 'jsonc-parser';
+import { parse, type ParseError, printParseErrorCode } from 'jsonc-parser';
 import { z, type ZodError } from 'zod';
 
 import type { GenericContext } from '../types/context.js';
@@ -215,7 +215,7 @@ export function getUserPackageSettingsFromConfigFile({
   // Parse the config file contents from JSON-C. jsonc-parser's parse() does not
   // throw on malformed input — it returns a best-effort partial result and
   // reports issues via the errors out-parameter, so we surface those manually.
-  const errors: Array<{ error: number; offset: number; length: number }> = [];
+  const errors: ParseError[] = [];
   const config: unknown = parse(configFileContents, errors, {
     allowTrailingComma: true,
   });

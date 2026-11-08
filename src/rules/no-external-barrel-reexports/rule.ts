@@ -14,8 +14,8 @@ export const noExternalBarrelReexports = createRule({
       noExternalBarrelReexports:
         'Barrel reexporting builtin or third party modules is not supported',
     },
+    defaultOptions: [],
   },
-  defaultOptions: [],
   create(context) {
     const esmInfo = getESMInfo(context);
 

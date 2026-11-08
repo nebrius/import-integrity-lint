@@ -14,8 +14,8 @@ export const noEmptyEntryPoints = createRule({
       noEmptyExternallyImportedFiles:
         'Externally imported file "{{filePath}}" has no exports',
     },
+    defaultOptions: [],
   },
-  defaultOptions: [],
   create(context) {
     const esmInfo = getESMInfo(context);
 

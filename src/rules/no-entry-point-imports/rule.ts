@@ -12,8 +12,8 @@ export const noEntryPointImports = createRule({
     messages: {
       noEntryPointImports: 'Entry point exports should be not imported',
     },
+    defaultOptions: [],
   },
-  defaultOptions: [],
   create(context) {
     const esmInfo = getESMInfo(context);
 

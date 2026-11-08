@@ -12,8 +12,8 @@ export const noNodeBuiltins = createRule({
       noNodeBuiltins:
         'Import of Node.js built-in module "{{specifier}}" is not allowed',
     },
+    defaultOptions: [],
   },
-  defaultOptions: [],
   create(context) {
     const esmInfo = getESMInfo(context);
 

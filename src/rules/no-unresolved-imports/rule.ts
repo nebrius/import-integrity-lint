@@ -35,8 +35,8 @@ export const noUnresolvedImports = createRule({
         'Third party module specifier "{{specifier}}" is not listed in package.json.',
       emptyModuleSpecifier: 'Module specifier is empty',
     },
+    defaultOptions: [],
   },
-  defaultOptions: [],
   create(context) {
     const esmInfo = getESMInfo(context);
 
