@@ -6,7 +6,7 @@ outline: deep
 
 # Package-level options
 
-The remaining options are package-scoped. In single-repo mode, place them in `settings['import-integrity']` or in a `import-integrity.config.json`/`import-integrity.config.jsonc` file in `packageRootDir` (but not both). In monorepo mode, place them in a package's Import Integrity config if that package needs non-default values. The examples below use the single-repo form.
+The remaining options are package-scoped. In single-repo mode, place them in `settings['import-integrity']` or in a `import-integrity.config.json`/`import-integrity.config.jsonc` file in `packageRootDir` (but not both). In monorepo mode, place them in a package's Import Integrity config if that package needs non-default values. To set an option for every package in a monorepo at once, use a [base config](./#base-config) at the monorepo root. The examples below use the single-repo form.
 
 ## `alias`
 

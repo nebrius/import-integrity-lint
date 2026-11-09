@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { jest } from '@jest/globals';
 import { parse } from '@typescript-eslint/typescript-estree';
 
 import type { StrippedAnalyzedFileDetails } from '../../../__test__/util.js';
@@ -132,6 +133,13 @@ afterEach(() => {
   if (existsSync(FILE_JSON_NEW)) {
     unlinkSync(FILE_JSON_NEW);
   }
+});
+
+it("Doesn't warn about a package whose code files were analyzed", () => {
+  const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  initializePackage(packageSettings);
+  expect(warnSpy).not.toHaveBeenCalled();
+  warnSpy.mockRestore();
 });
 
 it('Updates package cache when a new file is added', () => {

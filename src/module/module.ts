@@ -23,7 +23,7 @@ import {
   getDependenciesFromPackageJson,
   getRelativePathFromRoot,
 } from '../util/files.js';
-import { debug, formatMilliseconds } from '../util/logging.js';
+import { debug, formatMilliseconds, warn } from '../util/logging.js';
 import { computeAnalyzedInfo } from './computeAnalyzedInfo.js';
 import {
   addBaseInfoForFile,
@@ -213,6 +213,7 @@ export function initializePackage({
   debug(`  resolved info: ${formatMilliseconds(resolveEnd - resolveStart)}`);
   debug(`  analyzed info: ${formatMilliseconds(analyzeEnd - analyzestart)}`);
 
+  let numCodeFiles = 0;
   let numImports = 0;
   let numExports = 0;
   let numReexports = 0;
@@ -220,6 +221,7 @@ export function initializePackage({
     if (fileDetails.fileType !== 'code') {
       continue;
     }
+    numCodeFiles++;
     numImports += fileDetails.singleImports.length;
     numImports += fileDetails.barrelImports.length;
     numImports += fileDetails.dynamicImports.length;
@@ -235,6 +237,19 @@ export function initializePackage({
   debug(`    ${numImports.toLocaleString()} imports`);
   debug(`    ${numExports.toLocaleString()} exports`);
   debug(`    ${numReexports.toLocaleString()} reexports`);
+
+  // A package with nothing analyzed is almost always a misconfiguration, such
+  // as a packageRootDir that points at the wrong directory, and every rule
+  // silently does nothing for it. The ignorePackages hint only applies in
+  // monorepo mode, the only place the setting exists
+  if (numCodeFiles === 0) {
+    warn(
+      `No code files in package ${packageRootDir} were analyzed. Files are skipped when their path contains a folder or file name that is ignored by default (see defaultIgnoreOverrides), when they match .gitignore or ignorePatterns (see ignoreOverridePatterns), or when they have syntax errors` +
+        (packageRootDir !== repoRootDir
+          ? '. If this package has no code to analyze, add it to ignorePackages'
+          : '')
+    );
+  }
 
   return true;
 }

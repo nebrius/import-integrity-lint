@@ -1,16 +1,18 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { isAbsolute } from 'node:path';
 
+import {
+  DEFAULT_TOOLS,
+  findRootSync,
+  NoMatchingMonorepoFound,
+} from '@manypkg/find-root';
 import { parse, type ParseError, printParseErrorCode } from 'jsonc-parser';
-import { z, type ZodError } from 'zod';
+import { z } from 'zod';
 
 import type { GenericContext } from '../types/context.js';
 import { exitWithError } from '../util/error.js';
-import {
-  findPackageConfigFile,
-  trimTrailingPathSeparator,
-} from '../util/files.js';
-import { setVerbose } from '../util/logging.js';
+import { findConfigFileIn, trimTrailingPathSeparator } from '../util/files.js';
+import { debug, setVerbose, warn } from '../util/logging.js';
 
 const globalSettingsSchema = z.strictObject({
   mode: z.enum(['auto', 'one-shot', 'fix', 'editor']).optional(),
@@ -36,12 +38,17 @@ const singleRepoSettingsSchema = z.strictObject({
 
 const monorepoPackageSettingsSchema = z.strictObject({
   monorepoRootDir: z.string(),
+  ignorePackages: z.array(z.string()).optional(),
   ...globalSettingsSchema.shape,
 });
 
 const DEFAULT_EDITOR_UPDATE_RATE = 500;
 
-export type PackageSettings = z.infer<typeof packageSettingsSchema> & {
+// Package-level settings as written in a config file, base file, or ESLint
+// settings, before they're attached to a package
+type PackageConfig = z.infer<typeof packageSettingsSchema>;
+
+export type PackageSettings = PackageConfig & {
   repoRootDir: string;
   packageRootDir: string;
 };
@@ -59,29 +66,95 @@ type SingleRepoUserSettings = BaseRepoUserSettings & {
 
 type MonorepoUserSettings = BaseRepoUserSettings & {
   type: 'monorepo';
+  ignorePackages: string[];
 };
 
 export type RepoUserSettings = SingleRepoUserSettings | MonorepoUserSettings;
 
-// If there were errors, print a friendly-ish explanation of them
-function throwFormattedErrors(error: ZodError): never {
-  const issues: string[] = [];
-  for (const issue of error.issues) {
-    let formattedIssue = issue.code.replace('_', ' ');
-    formattedIssue = `  ${formattedIssue[0].toUpperCase() + formattedIssue.slice(1)}`;
-    if (issue.path.length) {
-      formattedIssue += ` for property "${issue.path.join('.')}"\n`;
-    } else {
-      formattedIssue += '\n';
+// Every workspace tool @manypkg knows, without its fallback to the nearest
+// package.json. Outside a workspace that fallback is almost always the package
+// itself, where a base config would only duplicate the package's own config
+const WORKSPACE_TOOLS = DEFAULT_TOOLS.filter((tool) => tool.type !== 'root');
+
+// The root of the workspace a package belongs to, found the same way package
+// discovery finds it in monorepo mode, so per-package runs and a root run agree
+// on where the base config lives. Undefined outside a workspace, where there is
+// no base config
+function findWorkspaceRoot(packageRootDir: string) {
+  try {
+    return findRootSync(packageRootDir, { tools: WORKSPACE_TOOLS }).rootDir;
+  } catch (e) {
+    if (e instanceof NoMatchingMonorepoFound) {
+      debug(
+        `No workspace found at or above ${packageRootDir}, so no base config applies`
+      );
+      return undefined;
     }
-    for (const [key, value] of Object.entries(issue)) {
-      if (key !== 'code' && key !== 'path') {
-        formattedIssue += `    ${key}: ${String(value)}\n`;
-      }
-    }
-    issues.push(formattedIssue);
+    // Anything else, such as a malformed package.json beside a lockfile, can
+    // come from any directory above the package, including ones unrelated to
+    // this project. The lookup only serves an optional base config, so linting
+    // continues without one. @manypkg's errors don't name the file it read
+    warn(
+      `Could not find the workspace root of package ${packageRootDir} while looking for import-integrity.base.json(c), so no base config is applied. A workspace or package manager file in that directory or a directory above it could not be read: ${e instanceof Error ? e.message : String(e)}`
+    );
+    return undefined;
   }
-  exitWithError('Invalid settings:\n' + issues.join('\n'));
+}
+
+// Read and validate a package config file or base config file
+export function readPackageConfigFile(filePath: string): PackageConfig {
+  // Parse the config file contents from JSON-C. jsonc-parser's parse() does not
+  // throw on malformed input — it returns a best-effort partial result and
+  // reports issues via the errors out-parameter, so we surface those manually.
+  const errors: ParseError[] = [];
+  const config: unknown = parse(readFileSync(filePath, 'utf-8'), errors, {
+    allowTrailingComma: true,
+  });
+  if (errors.length > 0) {
+    const formatted = errors
+      .map(
+        (e) => `${printParseErrorCode(e.error)} at offset ${String(e.offset)}`
+      )
+      .join(', ');
+    exitWithError(`Failed to parse ${filePath}: ${formatted}`);
+  }
+
+  // Validate the parsed config data and return the results
+  const parseResult = packageSettingsSchema.safeParse(config);
+  if (!parseResult.success) {
+    exitWithError(
+      `Invalid settings in ${filePath}:\n${z.prettifyError(parseResult.error)}`
+    );
+  }
+  return parseResult.data;
+}
+
+// Read the base config at the root of a workspace, whose package-level settings
+// apply to every package unless the package's own settings replace them
+export function readBaseSettings(rootDir: string): PackageConfig | undefined {
+  const baseConfigFilePath = findConfigFileIn(rootDir, 'base');
+  if (!baseConfigFilePath) {
+    debug(`No base config found in workspace root ${rootDir}`);
+    return undefined;
+  }
+  debug(`Using base config ${baseConfigFilePath}`);
+  return readPackageConfigFile(baseConfigFilePath);
+}
+
+// A package's settings: its own settings, from its config file or the ESLint
+// settings, laid over the base config option by option
+export function layerPackageSettings({
+  baseSettings,
+  ownSettings,
+  repoRootDir,
+  packageRootDir,
+}: {
+  baseSettings: PackageConfig | undefined;
+  ownSettings: PackageConfig | undefined;
+  repoRootDir: string;
+  packageRootDir: string;
+}): PackageSettings {
+  return { ...baseSettings, ...ownSettings, repoRootDir, packageRootDir };
 }
 
 export function getUserRepoSettings(
@@ -104,7 +177,7 @@ export function getUserRepoSettings(
       importIntegritySettings
     );
     if (!parseResult.success) {
-      throwFormattedErrors(parseResult.error);
+      exitWithError(`Invalid settings:\n${z.prettifyError(parseResult.error)}`);
     }
 
     // Split props apart so we can recombine them in the standardized format
@@ -113,6 +186,7 @@ export function getUserRepoSettings(
       mode,
       editorUpdateRate = DEFAULT_EDITOR_UPDATE_RATE,
       monorepoRootDir,
+      ignorePackages = [],
     } = parseResult.data;
 
     // Validate monorepoRootDir exists
@@ -134,13 +208,14 @@ export function getUserRepoSettings(
       mode,
       editorUpdateRate,
       repoRootDir: trimmedMonorepoRootDir,
+      ignorePackages,
     };
   } else {
     const parseResult = singleRepoSettingsSchema.safeParse(
       importIntegritySettings
     );
     if (!parseResult.success) {
-      throwFormattedErrors(parseResult.error);
+      exitWithError(`Invalid settings:\n${z.prettifyError(parseResult.error)}`);
     }
 
     // Split props apart so we can recombine them in the standardized format
@@ -170,27 +245,16 @@ export function getUserRepoSettings(
     // root-level monorepo config and a per-package single-repo config without
     // duplication. Mixing the two sources is rejected to keep a single source
     // of truth per package.
-    const configFilePath = findPackageConfigFile(trimmedPackageRootDir);
-    let resolvedPackageSettings: PackageSettings;
-    if (configFilePath) {
-      if (Object.keys(packageSettings).length > 0) {
-        exitWithError(
-          `Found ${configFilePath} and package-level settings in ESLint config. Config files and package-level settings cannot be used together.`
-        );
-      }
-      const configFileContents = readFileSync(configFilePath, 'utf-8');
-      resolvedPackageSettings = getUserPackageSettingsFromConfigFile({
-        configFileContents,
-        repoRootDir: trimmedPackageRootDir,
-        packageRootDir: trimmedPackageRootDir,
-      });
-    } else {
-      resolvedPackageSettings = {
-        ...packageSettings,
-        repoRootDir: trimmedPackageRootDir,
-        packageRootDir: trimmedPackageRootDir,
-      };
+    const configFilePath = findConfigFileIn(trimmedPackageRootDir, 'config');
+    if (configFilePath && Object.keys(packageSettings).length > 0) {
+      exitWithError(
+        `Found ${configFilePath} and package-level settings in ESLint config. Config files and package-level settings cannot be used together.`
+      );
     }
+
+    // The base config, if any, sits under whichever source the package's own
+    // settings come from
+    const workspaceRootDir = findWorkspaceRoot(trimmedPackageRootDir);
 
     // Return formatted user supplied settings, minus debug logging
     return {
@@ -198,46 +262,16 @@ export function getUserRepoSettings(
       mode,
       editorUpdateRate,
       repoRootDir: trimmedPackageRootDir,
-      packageSettings: resolvedPackageSettings,
+      packageSettings: layerPackageSettings({
+        baseSettings: workspaceRootDir
+          ? readBaseSettings(workspaceRootDir)
+          : undefined,
+        ownSettings: configFilePath
+          ? readPackageConfigFile(configFilePath)
+          : packageSettings,
+        repoRootDir: trimmedPackageRootDir,
+        packageRootDir: trimmedPackageRootDir,
+      }),
     };
   }
-}
-
-export function getUserPackageSettingsFromConfigFile({
-  configFileContents,
-  repoRootDir,
-  packageRootDir,
-}: {
-  repoRootDir: string;
-  packageRootDir: string;
-  configFileContents: string;
-}): PackageSettings {
-  // Parse the config file contents from JSON-C. jsonc-parser's parse() does not
-  // throw on malformed input — it returns a best-effort partial result and
-  // reports issues via the errors out-parameter, so we surface those manually.
-  const errors: ParseError[] = [];
-  const config: unknown = parse(configFileContents, errors, {
-    allowTrailingComma: true,
-  });
-  if (errors.length > 0) {
-    const formatted = errors
-      .map(
-        (e) => `${printParseErrorCode(e.error)} at offset ${String(e.offset)}`
-      )
-      .join(', ');
-    exitWithError(
-      `Failed to parse config file for package ${packageRootDir}: ${formatted}`
-    );
-  }
-
-  // Validate the parsed config data and return the results
-  const parseResult = packageSettingsSchema.safeParse(config);
-  if (!parseResult.success) {
-    throwFormattedErrors(parseResult.error);
-  }
-  return {
-    ...parseResult.data,
-    repoRootDir,
-    packageRootDir,
-  };
 }

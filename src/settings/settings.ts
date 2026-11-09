@@ -5,9 +5,10 @@ import type { Ignore } from 'ignore';
 import ignore from 'ignore';
 
 import type { GenericContext } from '../types/context.js';
+import { escapeRegExp } from '../util/code.js';
 import { exitWithError, exitWithInternalError } from '../util/error.js';
 import {
-  getRawMonorepoPackageSettings,
+  getMonorepoPackages,
   isPathWithinDir,
   trimTrailingPathSeparator,
 } from '../util/files.js';
@@ -18,8 +19,10 @@ import { getPackageJsonSettings } from './package.js';
 import { getTypeScriptSettings } from './typescript.js';
 import type { PackageSettings, RepoUserSettings } from './user.js';
 import {
-  getUserPackageSettingsFromConfigFile,
   getUserRepoSettings,
+  layerPackageSettings,
+  readBaseSettings,
+  readPackageConfigFile,
 } from './user.js';
 
 export type IgnorePattern = {
@@ -124,10 +127,6 @@ function compareSettingsObjects(
   return !!b && JSON.stringify(a) === JSON.stringify(b);
 }
 
-function escapeRegExp(str: string) {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
 export function getRepoSettings(
   context: Pick<GenericContext, 'filename' | 'settings'>
 ): ParsedRepoSettings {
@@ -168,13 +167,24 @@ export function getRepoSettings(
   if (rest.type === 'singlerepo') {
     populatePackageSettingsCache(rest.packageSettings);
   } else {
-    const packageConfigFiles = getRawMonorepoPackageSettings(rest.repoRootDir);
-    for (const packageConfigFile of packageConfigFiles) {
-      const packageSettings = getUserPackageSettingsFromConfigFile({
-        repoRootDir: rest.repoRootDir,
-        ...packageConfigFile,
-      });
-      populatePackageSettingsCache(packageSettings);
+    const { workspaceRootDir, packages } = getMonorepoPackages(
+      rest.repoRootDir,
+      rest.ignorePackages
+    );
+    const baseSettings = workspaceRootDir
+      ? readBaseSettings(workspaceRootDir)
+      : undefined;
+    for (const { packageRootDir, configFilePath } of packages) {
+      populatePackageSettingsCache(
+        layerPackageSettings({
+          baseSettings,
+          ownSettings: configFilePath
+            ? readPackageConfigFile(configFilePath)
+            : undefined,
+          repoRootDir: rest.repoRootDir,
+          packageRootDir,
+        })
+      );
     }
   }
 

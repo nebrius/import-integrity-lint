@@ -1,0 +1,4 @@
+{
+  "ignorePatterns": ["tmp/**"],
+  "testFilePatterns": ["__rush_test__"]
+}

@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 
+import { jest } from '@jest/globals';
 import { parse } from '@typescript-eslint/typescript-estree';
 
 import type { ParsedPackageSettings } from '../../../settings/settings.js';
@@ -35,7 +36,18 @@ it('Updates cache when a new file is added', () => {
     defaultIgnoreOverrides: [],
     testFilePatterns: [],
   };
+  const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
   initializePackage(settings);
+
+  // The package's only code file can't be parsed, so nothing was analyzed. In
+  // single-package mode the warning doesn't point at ignorePackages, which only
+  // exists in monorepo mode
+  expect(warnSpy).toHaveBeenCalledTimes(1);
+  expect(warnSpy.mock.calls[0][0]).toContain(
+    `No code files in package ${SINGLEREPO_DIR} were analyzed`
+  );
+  expect(warnSpy.mock.calls[0][0]).not.toContain('ignorePackages');
+  warnSpy.mockRestore();
 
   let packageInfo = getPackageInfo(SINGLEREPO_DIR);
   // a.ts on disk contains intentionally invalid syntax; it must be skipped

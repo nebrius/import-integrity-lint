@@ -100,6 +100,8 @@ Default: `[]`
 
 An array of package names to ignore when checking for unused exports. Some monorepos have packages that are published publically, even though most packages are only used internally within the monorepo. When this happens, add the publicly published package names to this array to prevent the rule from flagging exports that are actually used by external consumers.
 
+The listed packages are still analyzed, and their imports still count as uses of other packages' exports. To leave a package out of analysis entirely, use the [`ignorePackages` setting](../../configuration/repo-level-options#ignorepackages) instead.
+
 ### When not to use this rule
 
 This rule is only meaningful in a monorepo, so it's not enabled in the default `recommended` configuration. Enable it via `monorepoRecommended`.

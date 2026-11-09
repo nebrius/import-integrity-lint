@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 2.1.0 (2026-11-08)
+
+- Added a `{ regex, flags }` form for `no-restricted-imports` patterns, so regular expressions can be written in JSON configs and in Oxlint configs, where `RegExp` literals don't survive serialization ([#48](https://github.com/nebrius/import-integrity-lint/issues/48)). A `RegExp` that was serialized to `{}` is now reported as a configuration error instead of silently disabling the rule
+- Fixed `no-restricted-imports` capture group substitution treating captured text as regex syntax, so a `.` in a captured folder name matched any character, reading `$10` and above as `$1` followed by a digit, and inserting the text `undefined` for a group that didn't take part in the match. A `$N` reference that can't refer to a `filepath` capture group is now reported as a configuration error instead of matching nothing
+- Fixed `no-restricted-imports` regular expressions with the `g` or `y` flag matching some files and not others, because both flags make a regular expression continue from where its previous match ended. A pattern with either flag is now reported as a configuration error
+- Added `import-integrity.base.json(c)`, a config at the monorepo root whose package-level options apply to every package unless a package's own settings replace them ([#48](https://github.com/nebrius/import-integrity-lint/issues/48)). Lint runs at the monorepo root and inside individual packages find the same base config
+- Added a warning when no code files in a package were analyzed, naming the settings that control which files are ([#48](https://github.com/nebrius/import-integrity-lint/issues/48))
+- Added the `ignorePackages` setting for monorepo mode, which leaves the listed packages out of analysis entirely, for packages with no code to analyze such as shared configs, or packages that aren't ready to be linted
+- Fixed a failure to discover a monorepo's packages, such as a workspace package without a `name` in its `package.json`, being swallowed under Oxlint, which left the plugin running without the monorepo's packages. It is now reported as a configuration error that names the monorepo root
+
 ## 2.0.0 (2026-11-07)
 
 ### Breaking changes

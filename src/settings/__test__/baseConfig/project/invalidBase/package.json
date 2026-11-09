@@ -1,0 +1,5 @@
+{
+  "name": "base-config-invalid-fixture",
+  "private": true,
+  "workspaces": ["packages/*"]
+}

@@ -1,8 +1,10 @@
 import { isAbsolute, resolve } from 'node:path';
+import { isRegExp } from 'node:util/types';
 
 import type { JSONSchema4 } from '@typescript-eslint/utils/json-schema';
 import { z } from 'zod';
 
+import { escapeRegExp } from '../../util/code.js';
 import { exitWithError } from '../../util/error.js';
 import {
   createRule,
@@ -11,48 +13,177 @@ import {
   isTypeOnly,
 } from '../util.js';
 
+const RULE_NAME = 'import-integrity/no-restricted-imports';
+
+// A RegExp written as plain data, for configs that are serialized to JSON on
+// the way to the rule (JSON config files, and every Oxlint config), where a
+// RegExp literal doesn't survive
+const regexObjectSchema = z.strictObject({
+  regex: z.string(),
+  flags: z.string().optional(),
+});
+
+const SERIALIZED_REGEXP_HINT =
+  'Expected a string, a RegExp, or { regex, flags? }, but got an empty object. ' +
+  'This is what a RegExp literal becomes after JSON serialization, which Oxlint applies to its config, including oxlint.config.ts. ' +
+  'Use { regex: "..." } instead';
+
+// Matches either an escaped character, which is passed through untouched (so
+// `\$1` stays a literal `$1`), or a capture group reference such as `$1`. All
+// digits after the `$` belong to the reference
+const GROUP_REFERENCE_REGEX = /\\.|\$(\d+)/g;
+
+// The capture group numbers a regex source refers to
+function getGroupReferences(source: string) {
+  const references: number[] = [];
+  for (const match of source.matchAll(GROUP_REFERENCE_REGEX)) {
+    const reference = match.at(1);
+    if (reference !== undefined) {
+      references.push(Number(reference));
+    }
+  }
+  return references;
+}
+
+function countCaptureGroups(pattern: string | RegExp) {
+  if (typeof pattern === 'string') {
+    return 0;
+  }
+  // The empty alternative makes the match always succeed, and the result then
+  // has one entry per capture group plus the whole match. Flags are kept so
+  // that sources only valid with u or v still compile
+  return (
+    (new RegExp(`${pattern.source}|`, pattern.flags).exec('')?.length ?? 1) - 1
+  );
+}
+
+// Parsing a pattern compiles the { regex } form, so every parsed pattern is a
+// string or a RegExp. RegExps are recognized with isRegExp rather than
+// instanceof, which fails across realms: ESLint structuredClones rule options,
+// and under Jest the clone comes from a different realm than the rule
+const patternSchema = z
+  .union([z.string(), regexObjectSchema, z.custom<RegExp>(isRegExp)], {
+    error: (issue) => {
+      const input = issue.input;
+      return typeof input === 'object' &&
+        input !== null &&
+        !isRegExp(input) &&
+        Object.keys(input).length === 0
+        ? SERIALIZED_REGEXP_HINT
+        : 'Expected a string, a RegExp, or { regex: string, flags?: string }';
+    },
+  })
+  .transform((pattern, ctx): string | RegExp => {
+    if (typeof pattern === 'string') {
+      return pattern;
+    }
+    let regex: RegExp;
+    if (isRegExp(pattern)) {
+      regex = pattern;
+    } else {
+      try {
+        regex = new RegExp(pattern.regex, pattern.flags);
+      } catch (e) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `Invalid regular expression ${JSON.stringify(pattern)}: ${e instanceof Error ? e.message : String(e)}`,
+        });
+        return z.NEVER;
+      }
+    }
+    // The g and y flags make test() and exec() continue from where the
+    // previous match ended, and the same RegExp is reused across files, so the
+    // pattern would match some files and not others
+    if (regex.global || regex.sticky) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `Regular expression ${String(regex)} can't use the g or y flag: both make a regular expression continue from where its previous match ended, so it would match some files and not others. Remove the flag`,
+      });
+      return z.NEVER;
+    }
+    return regex;
+  });
+
 const firstPartyEntrySchema = z.strictObject({
   type: z.enum(['first-party']),
-  filepath: z.union([z.string(), z.instanceof(RegExp)]),
-  allowed: z.array(z.union([z.string(), z.instanceof(RegExp)])).optional(),
-  denied: z.array(z.union([z.string(), z.instanceof(RegExp)])).optional(),
+  filepath: patternSchema,
+  allowed: z.array(patternSchema).optional(),
+  denied: z.array(patternSchema).optional(),
   excludeTypeImports: z.boolean().optional(),
   message: z.string().optional(),
 });
 
 const thirdPartyEntrySchema = z.strictObject({
   type: z.enum(['third-party', 'built-in']),
-  moduleSpecifier: z.union([z.string(), z.instanceof(RegExp)]),
-  allowed: z.array(z.union([z.string(), z.instanceof(RegExp)])).optional(),
-  denied: z.array(z.union([z.string(), z.instanceof(RegExp)])).optional(),
+  moduleSpecifier: patternSchema,
+  allowed: z.array(patternSchema).optional(),
+  denied: z.array(patternSchema).optional(),
   excludeTypeImports: z.boolean().optional(),
   message: z.string().optional(),
 });
 
-const entrySchema = z.union([firstPartyEntrySchema, thirdPartyEntrySchema]);
+// Discriminated so that an error inside an entry is reported at its own path,
+// instead of as one "Invalid input" for the whole entry. The refinement only
+// runs on an entry whose patterns all parsed
+const entrySchema = z
+  .discriminatedUnion('type', [firstPartyEntrySchema, thirdPartyEntrySchema])
+  .superRefine((entry, ctx) => {
+    // A reference to a capture group that doesn't exist would make its
+    // pattern silently never match, so it's an invalid option like any other.
+    // Only a first-party entry's filepath has groups to refer to
+    const groupCount =
+      entry.type === 'first-party' ? countCaptureGroups(entry.filepath) : 0;
+    const availableGroups =
+      entry.type === 'first-party'
+        ? `filepath ${String(entry.filepath)} has ${String(groupCount)} capture group${groupCount === 1 ? '' : 's'}`
+        : `${entry.type} entries have no filepath, so there are no capture groups to refer to`;
+    for (const key of ['allowed', 'denied'] as const) {
+      for (const [index, pattern] of (entry[key] ?? []).entries()) {
+        if (typeof pattern === 'string') {
+          continue;
+        }
+        for (const groupNumber of getGroupReferences(pattern.source)) {
+          if (groupNumber === 0 || groupNumber > groupCount) {
+            ctx.addIssue({
+              code: 'custom',
+              path: [key, index],
+              message: `Invalid capture group reference $${String(groupNumber)} in ${String(pattern)}: ${availableGroups}. References start at $1, and a literal dollar sign is written \\$`,
+            });
+          }
+        }
+      }
+    }
+  });
 const schema = z.strictObject({
   rules: z.array(entrySchema),
 });
 
-type FirstPartyEntry = z.infer<typeof firstPartyEntrySchema>;
-type ThirdPartyEntry = z.infer<typeof thirdPartyEntrySchema>;
-type Entry = FirstPartyEntry | ThirdPartyEntry;
-
-function replaceMatchesInRegex(regex: RegExp, matches: string[] | null) {
+// Substitute the capture groups of the filepath match into an allowed or
+// denied pattern. Captured text is escaped so it matches literally, and a group
+// that didn't take part in the match becomes the empty string
+function replaceMatchesInRegex(
+  regex: RegExp,
+  matches: Array<string | undefined> | null
+) {
   if (!matches) {
     return regex;
   }
-  let source = regex.source;
-  for (let i = 0; i < matches.length; i++) {
-    source = source.replaceAll('$' + (i + 1).toString(), matches[i]);
-  }
-  return new RegExp(source, regex.flags);
+  return new RegExp(
+    regex.source.replace(
+      GROUP_REFERENCE_REGEX,
+      (match: string, reference: string | undefined) =>
+        reference === undefined
+          ? match
+          : escapeRegExp(matches[Number(reference) - 1] ?? '')
+    ),
+    regex.flags
+  );
 }
 
 // The rule restricts nothing without options, so it has no default: enabling
 // it without any is a configuration mistake
 export const noRestrictedImports = createRule<
-  [options?: { rules: Entry[] }],
+  [options?: z.input<typeof schema>],
   'restrictedImport'
 >({
   name: 'no-restricted-imports',
@@ -63,7 +194,13 @@ export const noRestrictedImports = createRule<
     },
     schema: {
       type: 'array',
-      items: [schema.toJSONSchema({ unrepresentable: 'any' }) as JSONSchema4],
+      // The input side is what hosts validate, before patterns are compiled
+      items: [
+        schema.toJSONSchema({
+          unrepresentable: 'any',
+          io: 'input',
+        }) as JSONSchema4,
+      ],
       minItems: 1,
       maxItems: 1,
     },
@@ -74,15 +211,25 @@ export const noRestrictedImports = createRule<
     },
   },
   create(context) {
-    // The schema already requires options, but validation can't be relied on:
-    // ESLint 9 has been seen running rules whose options fail it, and Oxlint
-    // may not check it at all
+    // The options are validated here rather than relying on the host's
+    // validation against meta.schema. The RegExp branch of that schema has to
+    // accept anything, so that real RegExp instances pass under ESLint, which
+    // means no host can reject a RegExp that was serialized to {} on its way
+    // here. ESLint 9 has also been seen running rules whose options fail the
+    // schema, so a missing configuration is checked here too
     const [options] = context.options;
     if (!options) {
       exitWithError(
-        'Rule import-integrity/no-restricted-imports was enabled without options. It needs a `rules` array describing which imports to restrict'
+        `Rule ${RULE_NAME} was enabled without options. It needs a \`rules\` array describing which imports to restrict`
       );
     }
+    const result = schema.safeParse(options);
+    if (!result.success) {
+      exitWithError(
+        `Invalid options for rule ${RULE_NAME}:\n${z.prettifyError(result.error)}`
+      );
+    }
+    const entries = result.data.rules;
 
     const esmInfo = getESMInfo(context);
 
@@ -99,35 +246,18 @@ export const noRestrictedImports = createRule<
       return {};
     }
 
-    // Normalize allowed and denied string paths to absolute
-    const entries: Entry[] = [];
-    for (const originalEntry of options.rules) {
-      const entry = { ...originalEntry };
-      entries.push(entry);
-      if (entry.allowed) {
-        entry.allowed = entry.allowed.map((allowed) => {
-          if (typeof allowed === 'string' && !isAbsolute(allowed)) {
-            return resolve(esmInfo.packageInfo.packageRootDir, allowed);
-          }
-          return allowed;
-        });
-      }
-      if (entry.denied) {
-        entry.denied = entry.denied.map((denied) => {
-          if (typeof denied === 'string' && !isAbsolute(denied)) {
-            return resolve(esmInfo.packageInfo.packageRootDir, denied);
-          }
-          return denied;
-        });
-      }
+    // Normalize string file paths to absolute. Module specifiers are matched
+    // as written
+    const { packageRootDir } = esmInfo.packageInfo;
+    const resolveRelativePath = (pattern: string | RegExp) =>
+      typeof pattern === 'string' && !isAbsolute(pattern)
+        ? resolve(packageRootDir, pattern)
+        : pattern;
+    for (const entry of entries) {
+      entry.allowed = entry.allowed?.map(resolveRelativePath);
+      entry.denied = entry.denied?.map(resolveRelativePath);
       if (entry.type === 'first-party') {
-        // Normalize string paths to absolute
-        if (typeof entry.filepath === 'string' && !isAbsolute(entry.filepath)) {
-          entry.filepath = resolve(
-            esmInfo.packageInfo.packageRootDir,
-            entry.filepath
-          );
-        }
+        entry.filepath = resolveRelativePath(entry.filepath);
       }
     }
 
@@ -150,8 +280,9 @@ export const noRestrictedImports = createRule<
         if (entry.excludeTypeImports && isTypeOnly(importEntry)) {
           continue;
         }
-        // Check if this import applies to this entry
-        let matches: string[] | null = null;
+        // Check if this import applies to this entry. A capture group that
+        // didn't take part in the match is undefined
+        let matches: Array<string | undefined> | null = null;
         switch (entry.type) {
           case 'third-party':
           case 'built-in': {

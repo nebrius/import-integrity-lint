@@ -1,0 +1,7 @@
+{
+  "name": "monorepo-missing-name-fixture",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ]
+}

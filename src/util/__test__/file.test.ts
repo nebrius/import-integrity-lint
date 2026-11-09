@@ -1,11 +1,11 @@
-import { readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 import {
   _testOnlyResetFiles,
   convertToUnixishPath,
+  findConfigFileIn,
   getFiles,
-  getRawMonorepoPackageSettings,
+  getMonorepoPackages,
   getRelativePathFromRoot,
   isDefaultIgnoredPath,
   splitPathIntoSegments,
@@ -23,6 +23,8 @@ const ROOT_DIR = resolve(join(import.meta.dirname, '..', '..', '..'));
 //   - module/.../cache/project/monorepo: pnpm (pnpm-workspace.yaml)
 //   - module/.../packageInfo/repo/project/monorepo: yarn (yarn.lock + workspaces)
 //   - rules/no-unused-package-exports/.../project: lerna (lerna.json)
+//   - settings/.../baseConfig/project/singlerepo: bun (bun.lock + workspaces)
+//   - settings/.../baseConfig/project/monorepo: rush (rush.json)
 // The marker files are load-bearing for detection — keep them in place even
 // when they look empty.
 beforeEach(() => {
@@ -279,9 +281,13 @@ it('Can get relative path to root', () => {
   expect(getRelativePathFromRoot(`/base`, 'src/a.ts')).toEqual('src/a.ts');
 });
 
-it('Returns one entry per workspace package and reads each package config file', () => {
+it('Returns one entry per workspace package and finds each package config file', () => {
   const fixtureDir = join(TEST_PACKAGE_DIR, 'monorepoDiscovery');
-  const result = getRawMonorepoPackageSettings(fixtureDir);
+  const { workspaceRootDir, packages: result } =
+    getMonorepoPackages(fixtureDir);
+
+  // The workspace root @manypkg resolved, where the base config is looked for
+  expect(workspaceRootDir).toBe(fixtureDir);
 
   // Sorted by directory per @manypkg's expandPackageGlobsSync.
   expect(result).toHaveLength(3);
@@ -291,38 +297,24 @@ it('Returns one entry per workspace package and reads each package config file',
     join(fixtureDir, 'packages', 'withJsonc'),
   ]);
 
-  // Packages without a import-integrity config get the empty-object default.
+  // Packages without an import-integrity config have no config file path
   const noConfig = result.find((r) => r.packageRootDir.endsWith('noConfig'));
-  expect(noConfig?.configFileContents).toBe('{}');
+  expect(noConfig?.configFilePath).toBeUndefined();
 
-  // .json contents are returned verbatim.
+  // Both the .json and .jsonc filenames are found
   const withJson = result.find((r) => r.packageRootDir.endsWith('withJson'));
-  expect(withJson?.configFileContents).toBe(
-    readFileSync(
-      join(fixtureDir, 'packages', 'withJson', 'import-integrity.config.json'),
-      'utf-8'
-    )
+  expect(withJson?.configFilePath).toBe(
+    join(fixtureDir, 'packages', 'withJson', 'import-integrity.config.json')
   );
-
-  // .jsonc contents are returned verbatim — caller is responsible for parsing
-  // jsonc, this function only reads the bytes.
   const withJsonc = result.find((r) => r.packageRootDir.endsWith('withJsonc'));
-  expect(withJsonc?.configFileContents).toBe(
-    readFileSync(
-      join(
-        fixtureDir,
-        'packages',
-        'withJsonc',
-        'import-integrity.config.jsonc'
-      ),
-      'utf-8'
-    )
+  expect(withJsonc?.configFilePath).toBe(
+    join(fixtureDir, 'packages', 'withJsonc', 'import-integrity.config.jsonc')
   );
 });
 
 it('Ignores import-integrity config files outside declared workspace globs', () => {
   const fixtureDir = join(TEST_PACKAGE_DIR, 'monorepoDiscovery');
-  const result = getRawMonorepoPackageSettings(fixtureDir);
+  const { packages: result } = getMonorepoPackages(fixtureDir);
 
   expect(result.map((r) => r.packageRootDir)).not.toContain(
     join(fixtureDir, 'notWorkspace')
@@ -331,18 +323,39 @@ it('Ignores import-integrity config files outside declared workspace globs', () 
 
 it('Throws when both import-integrity.config.json and .jsonc exist in the same package', () => {
   const fixtureDir = join(TEST_PACKAGE_DIR, 'monorepoConflict');
-  expect(() => getRawMonorepoPackageSettings(fixtureDir)).toThrow(
+  expect(() => getMonorepoPackages(fixtureDir)).toThrow(
     `Multiple import-integrity.config.json(c) files found in ${join(fixtureDir, 'packages', 'conflict')}`
+  );
+});
+
+// @manypkg throws, and Oxlint would swallow the exception, so discovery has to
+// exit with a message that says what was being done
+it('Exits with context when workspace package discovery fails', () => {
+  const fixtureDir = join(TEST_PACKAGE_DIR, 'monorepoMissingName');
+  const discover = () => getMonorepoPackages(fixtureDir);
+  expect(discover).toThrow(
+    `Could not discover the packages of the monorepo at ${fixtureDir}:`
+  );
+  expect(discover).toThrow('missing the "name" field');
+});
+
+it('Throws when both import-integrity.base.json and .jsonc exist in the same directory', () => {
+  const fixtureDir = join(TEST_PACKAGE_DIR, 'baseConflict');
+  expect(() => findConfigFileIn(fixtureDir, 'base')).toThrow(
+    `Multiple import-integrity.base.json(c) files found in ${fixtureDir}`
   );
 });
 
 it('Returns the root as a single package when the root has no workspaces config', () => {
   const fixtureDir = join(TEST_PACKAGE_DIR, 'singlePackageRoot');
-  const result = getRawMonorepoPackageSettings(fixtureDir);
+  const { workspaceRootDir, packages: result } =
+    getMonorepoPackages(fixtureDir);
 
+  // Without a workspace there's no workspace root, so no base config
+  expect(workspaceRootDir).toBeUndefined();
   expect(result).toHaveLength(1);
   expect(result[0].packageRootDir).toBe(fixtureDir);
-  expect(result[0].configFileContents).toBe(
-    readFileSync(join(fixtureDir, 'import-integrity.config.json'), 'utf-8')
+  expect(result[0].configFilePath).toBe(
+    join(fixtureDir, 'import-integrity.config.json')
   );
 });

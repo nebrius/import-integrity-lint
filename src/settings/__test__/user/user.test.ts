@@ -1,5 +1,6 @@
-import { readFileSync } from 'node:fs';
 import { join, sep } from 'node:path';
+
+import { jest } from '@jest/globals';
 
 import type {
   ParsedPackageSettings,
@@ -10,7 +11,7 @@ import {
   getRepoSettings,
   markSettingsForRefresh,
 } from '../../settings.js';
-import { getUserPackageSettingsFromConfigFile } from '../../user.js';
+import { readPackageConfigFile } from '../../user.js';
 
 const TEST_PACKAGE_DIR = join(import.meta.dirname, 'project');
 const FILE_A = join(TEST_PACKAGE_DIR, 'src', 'a.ts');
@@ -288,10 +289,8 @@ it('Throws on missing packageRootDir in settings', () => {
       },
     })
   ).toThrow(`Invalid settings:
-  Invalid type for property "packageRootDir"
-    expected: string
-    message: Invalid input: expected string, received undefined
-`);
+✖ Invalid input: expected string, received undefined
+  → at packageRootDir`);
 });
 
 it('Throws on relative packageRootDir in settings', () => {
@@ -334,10 +333,8 @@ it('Throws on invalid user supplied mode', () => {
       },
     })
   ).toThrow(`Invalid settings:
-  Invalid value for property "mode"
-    values: auto,one-shot,fix,editor
-    message: Invalid option: expected one of "auto"|"one-shot"|"fix"|"editor"
-`);
+✖ Invalid option: expected one of "auto"|"one-shot"|"fix"|"editor"
+  → at mode`);
 });
 
 it('Throws on mismatched wildcard aliases', () => {
@@ -606,6 +603,63 @@ it("Throws on monorepoRootDir that doesn't exist", () => {
   ).toThrow(`monorepoRootDir "${join(MONOREPO_DIR, 'fake')}" does not exist`);
 });
 
+it('Leaves packages named in ignorePackages out of the monorepo entirely', () => {
+  const settings = {
+    'import-integrity': {
+      monorepoRootDir: MONOREPO_DIR,
+      mode: 'fix',
+      ignorePackages: ['@test/package-two'],
+    },
+  };
+  const { allPackageSettings } = getAllPackageSettings({
+    filename: MONOREPO_FILE_A,
+    settings,
+  });
+  expect(allPackageSettings.map((s) => s.packageRootDir)).toEqual([
+    MONOREPO_PKG_ONE,
+  ]);
+
+  // A file in the ignored package belongs to no package, so every rule skips it
+  const { packageSettings } = getAllPackageSettings({
+    filename: MONOREPO_FILE_C,
+    settings,
+  });
+  expect(packageSettings).toBeUndefined();
+});
+
+it('Warns about a name in ignorePackages that matches no workspace package', () => {
+  const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+  getRepoSettings({
+    filename: MONOREPO_FILE_A,
+    settings: {
+      'import-integrity': {
+        monorepoRootDir: MONOREPO_DIR,
+        mode: 'fix',
+        ignorePackages: ['@test/package-three'],
+      },
+    },
+  });
+  expect(warnSpy).toHaveBeenCalledTimes(1);
+  expect(warnSpy.mock.calls[0][0]).toContain(
+    'Package "@test/package-three" in ignorePackages was not found in the workspace'
+  );
+  warnSpy.mockRestore();
+});
+
+it('Rejects ignorePackages in single-repo settings', () => {
+  expect(() =>
+    getRepoSettings({
+      filename: FILE_A,
+      settings: {
+        'import-integrity': {
+          packageRootDir: TEST_PACKAGE_DIR,
+          ignorePackages: ['foo'],
+        },
+      },
+    })
+  ).toThrow('Unrecognized key: "ignorePackages"');
+});
+
 it('Throws when mixing monorepoRootDir and packageRootDir in settings', () => {
   expect(() =>
     getRepoSettings({
@@ -709,32 +763,19 @@ it('markSettingsForRefresh triggers exactly one recompute, repo-wide (monorepo)'
   expect(twoAfter).not.toBe(twoBefore);
 });
 
-// ─── getUserPackageSettingsFromConfigFile ────────────────────────────────────
+// ─── readPackageConfigFile ───────────────────────────────────────────────────
 
 it('Throws a formatted error when the config file contains invalid JSON', () => {
   const configFilePath = join(TEST_PACKAGE_DIR, 'invalid.config.json');
-  const packageRootDir = join(TEST_PACKAGE_DIR, 'packages', 'foo');
-  expect(() =>
-    getUserPackageSettingsFromConfigFile({
-      configFileContents: readFileSync(configFilePath, 'utf-8'),
-      repoRootDir: TEST_PACKAGE_DIR,
-      packageRootDir,
-    })
-  ).toThrow(`Failed to parse config file for package ${packageRootDir}:`);
+  expect(() => readPackageConfigFile(configFilePath)).toThrow(
+    `Failed to parse ${configFilePath}:`
+  );
 });
 
 it('Parses a JSONC config file with comments and trailing commas', () => {
   const configFilePath = join(TEST_PACKAGE_DIR, 'jsonc.config.jsonc');
-  const packageRootDir = join(TEST_PACKAGE_DIR, 'packages', 'foo');
-  const settings = getUserPackageSettingsFromConfigFile({
-    configFileContents: readFileSync(configFilePath, 'utf-8'),
-    repoRootDir: TEST_PACKAGE_DIR,
-    packageRootDir,
-  });
-  expect(settings).toEqual({
+  expect(readPackageConfigFile(configFilePath)).toEqual({
     entryPointFiles: { '.': './src/a.ts' },
-    repoRootDir: TEST_PACKAGE_DIR,
-    packageRootDir,
   });
 });
 

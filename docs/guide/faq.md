@@ -36,6 +36,18 @@ The distinction matters most in monorepos. The [`no-unused-package-exports`](../
 
 In single-package setups, these options are the same in practice: both options exempt the file's exports from unused-export checking. Using the right one keeps your intent clear and makes the monorepo check work correctly if you ever add this package to a monorepo.
 
+### Why do I see a warning that no code files in a package were analyzed?
+
+Import Integrity logs this warning when it finished analyzing a package and found no code files in it, so every rule does nothing for that package. The causes, and the fix for each:
+
+- **The package has no files with a supported extension.** This is expected for a package that only holds a shared `tsconfig.json` or ESLint config. In monorepo mode, add the package to [`ignorePackages`](../configuration/repo-level-options#ignorepackages).
+- **`packageRootDir` points at the wrong directory**, such as an empty folder or a parent of the package. Point it at the directory that contains the package's `package.json`.
+- **Every code file is in a folder or has a name that is ignored by default**, such as `dist`, or a checkout inside a hidden folder like `.worktrees`. See [`defaultIgnoreOverrides`](../configuration/package-level-options#defaultignoreoverrides).
+- **Every code file matches `.gitignore` or `ignorePatterns`.** See [`ignoreOverridePatterns`](../configuration/package-level-options#ignoreoverridepatterns).
+- **Every code file has a syntax error**, so none of them can be parsed.
+
+The warning is logged once per package each time the linter starts. Under ESLint's `--concurrency` or with Oxlint's threads, each worker logs it once. It has no setting of its own to turn it off; `ignorePackages` is the way to tell Import Integrity a package has nothing to analyze.
+
 ## Caveats
 
 ### Non-named barrel export entry points are not tracked

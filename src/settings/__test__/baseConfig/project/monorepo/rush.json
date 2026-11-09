@@ -1,0 +1,8 @@
+{
+  // Only projects[].projectFolder is read during package discovery
+  "rushVersion": "5.0.0",
+  "projects": [
+    { "packageName": "@rush/one", "projectFolder": "packages/one" },
+    { "packageName": "@rush/two", "projectFolder": "packages/two" }
+  ]
+}

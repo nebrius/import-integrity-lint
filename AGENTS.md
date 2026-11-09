@@ -96,4 +96,4 @@ TypeScript function overloads are de-duplicated in `computeBaseInfo.ts`. Only th
 
 ### Schema Validation
 
-Use zod v4's native `schema.toJSONSchema()` for ESLint rule option schemas. For schemas containing `z.instanceof(RegExp)`, use `{ unrepresentable: 'any' }` option.
+Use zod v4's native `schema.toJSONSchema()` for ESLint rule option schemas. Accept RegExp values with `z.custom<RegExp>(isRegExp)` (`isRegExp` from `node:util/types`), never `z.instanceof(RegExp)`: ESLint `structuredClone`s rule options, and under Jest the clone comes from a different realm, where `instanceof` fails. JSON Schema can't represent a RegExp, so for those schemas use the `{ unrepresentable: 'any' }` option.

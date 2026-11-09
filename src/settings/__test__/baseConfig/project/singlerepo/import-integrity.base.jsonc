@@ -1,0 +1,6 @@
+{
+  // Applied to every package unless the package's own settings replace it
+  "alias": { "@base/*": "src/*" },
+  "ignorePatterns": ["generated/**"],
+  "testFilePatterns": ["__base_test__"]
+}

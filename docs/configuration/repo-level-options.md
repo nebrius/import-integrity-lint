@@ -52,7 +52,7 @@ ESM Example:
 
 Type: `string`
 
-`monorepoRootDir` is the absolute path to the monorepo root. Import Integrity uses your monorepo's workspace configuration to discover packages underneath this directory. Each discovered workspace package becomes a package root. If a workspace package contains `import-integrity.config.json` or `import-integrity.config.jsonc` at its root, Import Integrity loads package-level settings from that file; otherwise default package-level settings are used. Config files outside the package root directories of declared workspace packages are ignored.
+`monorepoRootDir` is the absolute path to the monorepo root. Import Integrity uses your monorepo's workspace configuration to discover packages underneath this directory. Each discovered workspace package becomes a package root. If a workspace package contains `import-integrity.config.json` or `import-integrity.config.jsonc` at its root, Import Integrity loads package-level settings from that file; otherwise default package-level settings are used. Config files outside the package root directories of declared workspace packages are ignored, except for the [base config](./#base-config) at the monorepo root, which applies to every package.
 
 `packageRootDir` and `monorepoRootDir` are mutually exclusive and cannot both be defined.
 
@@ -69,6 +69,35 @@ Example:
 ```
 
 For details on how to structure your config when using `monorepoRootDir`, see the [Monorepos](../guide/monorepos.html) guide.
+
+## `ignorePackages`
+
+Type: `string[]`
+
+Default: `[]`
+
+Monorepo mode only. A list of workspace package names, as set in each package's `package.json`, that Import Integrity leaves out entirely. An ignored package is not analyzed, no rule reports anything in its files, and no warning is logged for it.
+
+Use it for packages with no code to analyze, such as a package that only holds a shared `tsconfig.json` or ESLint config, or for a package that isn't ready to be linted yet.
+
+Example:
+
+```js
+{
+  settings: {
+    'import-integrity': {
+      monorepoRootDir: import.meta.dirname,
+      ignorePackages: ['@repo/typescript-config', '@repo/legacy-app'],
+    },
+  },
+}
+```
+
+Ignoring a package has a trade-off: its imports are invisible to the rest of the monorepo. [`no-unused-package-exports`](../rules/no-unused-package-exports/) can then report an entry-point export in another package that only the ignored package uses. If that matters, leave the package discovered and exclude its files with your linter's own ignores instead, such as `ignores` in an ESLint config. Its files then produce no reports, while its imports still count toward cross-package usage.
+
+A name that matches no workspace package is logged as a warning.
+
+This setting is unrelated to the [`ignorePackages` option of `no-unused-package-exports`](../rules/no-unused-package-exports/#ignorepackages), which still analyzes the listed packages and only exempts their entry-point exports from that one rule.
 
 ## `mode`
 

@@ -1,6 +1,6 @@
 {
   "name": "import-integrity-lint",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "High-performance ESLint/Oxlint plugin that catches dead code, broken imports, and architectural violations. Optimized for monorepos.",
   "keywords": [
     "eslint",
@@ -54,6 +54,7 @@
     "format": "prettier --write \"**/*.{js,jsx,mjs,ts,tsx,mts}\""
   },
   "dependencies": {
+    "@manypkg/find-root": "3.1.0",
     "@manypkg/get-packages": "3.1.0",
     "@typescript-eslint/typescript-estree": "^8.29.1",
     "@typescript-eslint/utils": "^8.19.1",

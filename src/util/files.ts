@@ -47,49 +47,96 @@ export function isDefaultIgnoredPath(
     );
 }
 
-// Look for a single import-integrity.config.json(c) file directly inside dir.
-// Returns the absolute path if exactly one is present, undefined if none, and
-// throws if both filename variants exist in the same directory.
-export function findPackageConfigFile(dir: string): string | undefined {
-  const directoryContents = readdirSync(dir, { withFileTypes: true });
-  const configFiles = directoryContents.filter(
-    (item) =>
-      item.name === 'import-integrity.config.json' ||
-      item.name === 'import-integrity.config.jsonc'
+// The per-package config file, and the base config at the root of a workspace
+const CONFIG_FILE_STEMS = {
+  config: 'import-integrity.config',
+  base: 'import-integrity.base',
+};
+
+// Look for a single config file of the given type directly inside dir, as
+// either .json or .jsonc. Returns the absolute path if exactly one is present,
+// undefined if none, and exits if both filename variants exist in dir.
+export function findConfigFileIn(
+  dir: string,
+  type: keyof typeof CONFIG_FILE_STEMS
+): string | undefined {
+  const stem = CONFIG_FILE_STEMS[type];
+  const configFiles = readdirSync(dir, { withFileTypes: true }).filter(
+    (item) => item.name === `${stem}.json` || item.name === `${stem}.jsonc`
   );
   if (configFiles.length === 0) {
     return undefined;
   }
   if (configFiles.length > 1) {
-    exitWithError(
-      `Multiple import-integrity.config.json(c) files found in ${dir}`
-    );
+    exitWithError(`Multiple ${stem}.json(c) files found in ${dir}`);
   }
   return join(dir, configFiles[0].name);
 }
 
-// Fetch a list of all import-integrity.config.json files, which correspond to each
-// package that we want to analyze in a monorepo. We use our own recursive
-// implementation instead of a library like glob to avoid recusring into folders
-// that are a) very large and b) guaranteed to not be analyzed.
-export function getRawMonorepoPackageSettings(repoRootDir: string) {
-  const rawPackageSettings: {
-    packageRootDir: string;
-    configFileContents: string;
-  }[] = [];
+// @manypkg throws on problems such as a workspace package without a name, or
+// a workspace file that can't be parsed. Oxlint swallows exceptions, which
+// would leave the plugin running without the package list and failing later
+// in a way that doesn't point here, so exit with context instead
+function getWorkspacePackages(repoRootDir: string) {
+  try {
+    return getPackagesSync(repoRootDir);
+  } catch (e) {
+    exitWithError(
+      `Could not discover the packages of the monorepo at ${repoRootDir}: ${e instanceof Error ? e.message : String(e)}`
+    );
+  }
+}
 
-  const packageDirs = getPackagesSync(repoRootDir).packages;
+// Discover the packages to analyze in a monorepo from its workspace
+// configuration, via @manypkg, along with the path to each package's config
+// file, if it has one. Also returns the workspace root @manypkg resolved, which
+// may sit above repoRootDir, since that's where the base config lives, or
+// undefined when there's no workspace. Packages named in ignorePackages are left
+// out entirely.
+export function getMonorepoPackages(
+  repoRootDir: string,
+  ignorePackages: string[] = []
+) {
+  const { rootDir, packages, tool } = getWorkspacePackages(repoRootDir);
+
+  // With no workspace configuration, @manypkg falls back to analyzing the root
+  // as the only package. There's no workspace root then, so no base config,
+  // the same as for a single package outside a workspace
+  const workspaceRootDir = tool.type === 'root' ? undefined : rootDir;
+  if (!workspaceRootDir) {
+    debug(
+      `No workspace found at or above ${repoRootDir}, so the root is analyzed as the only package and no base config applies`
+    );
+  }
+
+  const monorepoPackages: {
+    packageRootDir: string;
+    configFilePath: string | undefined;
+  }[] = [];
   debug('Packages to analyze:');
-  for (const packageDir of packageDirs) {
-    debug(`  ${relative(repoRootDir, packageDir.dir)}`);
-    const configFile = findPackageConfigFile(packageDir.dir);
-    rawPackageSettings.push({
-      packageRootDir: packageDir.dir,
-      configFileContents: configFile ? readFileSync(configFile, 'utf-8') : '{}',
+  for (const { dir, packageJson } of packages) {
+    if (ignorePackages.includes(packageJson.name)) {
+      continue;
+    }
+    debug(`  ${relative(repoRootDir, dir)}`);
+    monorepoPackages.push({
+      packageRootDir: dir,
+      configFilePath: findConfigFileIn(dir, 'config'),
     });
   }
 
-  return rawPackageSettings;
+  if (ignorePackages.length > 0) {
+    debug(`Ignored packages: ${ignorePackages.join(', ')}`);
+  }
+  for (const name of ignorePackages) {
+    if (!packages.some(({ packageJson }) => packageJson.name === name)) {
+      warn(
+        `Package "${name}" in ignorePackages was not found in the workspace`
+      );
+    }
+  }
+
+  return { workspaceRootDir, packages: monorepoPackages };
 }
 
 export function getFilesSync(

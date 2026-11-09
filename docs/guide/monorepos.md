@@ -52,11 +52,13 @@ export default defineConfig([
 ]);
 ```
 
+To share package-level options across packages, put them in a [base config](../configuration/#base-config) at the monorepo root. Each package's lint run finds it through your workspace configuration.
+
 ## Option 2: one root config with `monorepoRootDir`
 
 _Use this when you want a single config covering the whole monorepo, or when nested configs cause issues with other tools._
 
-A single root-level config covers every package. Workspace packages are discovered from your monorepo configuration under `monorepoRootDir`. Individual packages can override their settings with an `import-integrity.config.json` file at the package root.
+A single root-level config covers every package. Workspace packages are discovered from your monorepo configuration under `monorepoRootDir`. Options shared by every package can go in a [base config](../configuration/#base-config) at the monorepo root, and individual packages can override their settings with an `import-integrity.config.json` file at the package root.
 
 ::: warning
 This option has performance implications for larger codebases, since we need to run a single lint job for the entire monorepo. This means we can't parallelize across packages or skip linting packages with no changes. See Option 3 for a more performant alternative.
@@ -65,13 +67,15 @@ This option has performance implications for larger codebases, since we need to 
 ### Setup
 
 1. Set `settings['import-integrity'].monorepoRootDir` in your root config and add the `monorepoRecommended` config.
-2. Optionally add an `import-integrity.config.json` (or `.jsonc`) file to any workspace package that needs non-default package-scoped options.
+2. Optionally add an `import-integrity.base.json` (or `.jsonc`) file at the monorepo root for package-scoped options that every package shares.
+3. Optionally add an `import-integrity.config.json` (or `.jsonc`) file to any workspace package that needs its own package-scoped options.
 
 **Example structure:**
 
 ```text
 repo
 ├── eslint.config.mjs
+├── import-integrity.base.jsonc
 └── packages
     ├── web
     │   └── src
@@ -106,7 +110,7 @@ export default defineConfig([
 }
 ```
 
-Note: config files outside the declared workspace globs are ignored.
+Note: config files outside the declared workspace globs are ignored, except for the base config at the monorepo root.
 
 ## Option 3: root + separate configs (recommended)
 
@@ -125,13 +129,15 @@ Per-package configs can be parallelized and cached by task runners like Nx and T
 
 1. In your root config, set `settings['import-integrity'].monorepoRootDir` and add the `monorepoRecommended` config.
 2. In each package's config, set `settings['import-integrity'].packageRootDir` and add the regular `recommended` config.
-3. If a package needs non-default options (alias, testFilePatterns, etc.), add an `import-integrity.config.json` file at the package root. Don't put these settings in the package's ESLint config.
+3. If every package needs the same non-default options (alias, testFilePatterns, etc.), add an `import-integrity.base.json` file at the monorepo root. Both the root run and each package's run use it.
+4. If a package needs its own non-default options, add an `import-integrity.config.json` file at the package root. Don't put these settings in the package's ESLint config.
 
 **Example structure:**
 
 ```text
 repo
 ├── eslint.config.mjs
+├── import-integrity.base.jsonc
 └── packages
     ├── web
     │   ├── eslint.config.mjs
